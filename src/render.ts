@@ -142,7 +142,9 @@ function thinkingLine(thinking: any, fg: (color: any, text: string) => string): 
   if (!thinking) return "";
   const icon = thinking.status === "running" ? fg("warning", "…") : fg("success", "✓");
   const chars = typeof thinking.chars === "number" ? thinking.chars : 0;
-  const label = chars > 0 ? `thinking ${fmtCount(chars)} chars` : "thinking...";
+  const label = chars > 0
+    ? `thinking ${fmtCount(chars)} chars`
+    : thinking.status === "running" ? "thinking..." : "thinking";
   return `${icon} ${fg("toolOutput", label)}`;
 }
 

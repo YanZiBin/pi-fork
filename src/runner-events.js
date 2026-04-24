@@ -525,7 +525,9 @@ function formatThinkingActivityProgress(thinking) {
   if (!thinking || typeof thinking !== "object") return "";
   const icon = thinking.status === "running" ? "…" : "✓";
   const chars = typeof thinking.chars === "number" ? thinking.chars : 0;
-  const label = chars > 0 ? `thinking ${formatCount(chars)} chars` : "thinking...";
+  const label = chars > 0
+    ? `thinking ${formatCount(chars)} chars`
+    : thinking.status === "running" ? "thinking..." : "thinking";
   return `${icon} ${label}`;
 }
 

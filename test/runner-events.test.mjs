@@ -187,6 +187,32 @@ test("captures child thinking progress metadata without storing thinking text", 
   assert.equal(getForkProgressText(result), "✓ thinking 14 chars");
 });
 
+test("renders completed zero-character thinking without ellipsis", () => {
+  const result = makeResult();
+
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_start" },
+    },
+    result,
+  );
+  assert.equal(getForkProgressText(result), "… thinking...");
+
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_end" },
+    },
+    result,
+  );
+  assert.deepEqual(result.thinking, { status: "completed", chars: 0, activityOrder: 1 });
+  assert.deepEqual(result.activities, [
+    { type: "thinking", status: "completed", chars: 0, activityOrder: 1 },
+  ]);
+  assert.equal(getForkProgressText(result), "✓ thinking");
+});
+
 test("orders child thinking activity relative to tool activity", () => {
   const result = makeResult();
 
