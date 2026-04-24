@@ -119,7 +119,17 @@ function totalToolExecutions(result: ForkResult): number {
   return typeof result.toolExecutionCount === "number" ? Math.max(result.toolExecutionCount, stored) : stored;
 }
 
+function hasUnifiedActivities(result: ForkResult): boolean {
+  return Array.isArray(result.activities) && result.activities.length > 0;
+}
+
 function latestToolWithPreview(result: ForkResult): any | undefined {
+  const activities = hasUnifiedActivities(result) ? result.activities! : [];
+  for (let i = activities.length - 1; i >= 0; i--) {
+    const activity = activities[i];
+    if (activity?.type === "tool" && activity.status === "running" && activity.latestText) return activity;
+  }
+
   const tools = Array.isArray(result.toolExecutions) ? result.toolExecutions : [];
   for (let i = tools.length - 1; i >= 0; i--) {
     const tool = tools[i];
@@ -128,8 +138,7 @@ function latestToolWithPreview(result: ForkResult): any | undefined {
   return undefined;
 }
 
-function thinkingLine(result: ForkResult, fg: (color: any, text: string) => string): string {
-  const thinking = result.thinking;
+function thinkingLine(thinking: any, fg: (color: any, text: string) => string): string {
   if (!thinking) return "";
   const icon = thinking.status === "running" ? fg("warning", "…") : fg("success", "✓");
   const chars = typeof thinking.chars === "number" ? thinking.chars : 0;
@@ -141,33 +150,51 @@ function activityOrder(item: any, fallback: number): number {
   return typeof item?.activityOrder === "number" ? item.activityOrder : fallback;
 }
 
+function legacyActivities(result: ForkResult): any[] {
+  const activities: any[] = [];
+  if (result.thinking) activities.push({ ...result.thinking, type: "thinking" });
+  const tools = Array.isArray(result.toolExecutions) ? result.toolExecutions : [];
+  for (const tool of tools) activities.push({ ...tool, type: "tool" });
+  activities.sort((a, b) => activityOrder(a, 0) - activityOrder(b, 0));
+  return activities;
+}
+
+function storedActivities(result: ForkResult): any[] {
+  return hasUnifiedActivities(result) ? result.activities! : legacyActivities(result);
+}
+
+function totalActivityCount(result: ForkResult, stored: any[]): number {
+  if (typeof result.activityCount === "number") return Math.max(result.activityCount, stored.length);
+  if (hasUnifiedActivities(result)) return stored.length;
+  return totalToolExecutions(result) + (result.thinking ? 1 : 0);
+}
+
+function activityLine(activity: any, fg: (color: any, text: string) => string): string {
+  if (activity?.type === "thinking") return thinkingLine(activity, fg);
+  if (activity?.type === "tool") {
+    return `${toolIcon(activity, fg)} ${fg(activity?.status === "error" ? "error" : "toolOutput", toolLabel(activity))}${toolErrorSuffix(activity, fg)}`;
+  }
+  return "";
+}
+
 function renderToolLines(
   result: ForkResult,
   fg: (color: any, text: string) => string,
   limit?: number,
 ): string {
-  const tools = Array.isArray(result.toolExecutions) ? result.toolExecutions : [];
+  const activities = storedActivities(result);
   const lines: string[] = [];
 
-  const toShow = limit ? tools.slice(-limit) : tools;
-  const skipped = Math.max(0, totalToolExecutions(result) - toShow.length);
+  const toShow = limit ? activities.slice(-limit) : activities;
+  const skipped = Math.max(0, totalActivityCount(result, activities) - toShow.length);
   if (skipped > 0) {
-    lines.push(fg("muted", `... ${skipped} earlier tool call${skipped === 1 ? "" : "s"}`));
+    lines.push(fg("muted", `... ${skipped} earlier activit${skipped === 1 ? "y" : "ies"}`));
   }
 
-  const activities: Array<{ order: number; text: string }> = [];
-  const thinking = thinkingLine(result, fg);
-  if (thinking) {
-    activities.push({ order: activityOrder(result.thinking, 0), text: thinking });
+  for (const activity of toShow) {
+    const line = activityLine(activity, fg);
+    if (line) lines.push(line);
   }
-  toShow.forEach((tool, index) => {
-    activities.push({
-      order: activityOrder(tool, index + 1),
-      text: `${toolIcon(tool, fg)} ${fg(tool?.status === "error" ? "error" : "toolOutput", toolLabel(tool))}${toolErrorSuffix(tool, fg)}`,
-    });
-  });
-  activities.sort((a, b) => a.order - b.order);
-  for (const activity of activities) lines.push(activity.text);
 
   const previewTool = latestToolWithPreview(result);
   if (previewTool?.latestText) {
@@ -264,8 +291,9 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
 
   if (usage) text += `\n${fg("dim", usage)}`;
 
-  const totalTools = totalToolExecutions(result);
-  if (!expanded && (totalTools > COLLAPSED_TOOL_COUNT || finalOutput || status !== "running")) {
+  const activities = storedActivities(result);
+  const totalActivities = totalActivityCount(result, activities);
+  if (!expanded && (totalActivities > COLLAPSED_TOOL_COUNT || finalOutput || status !== "running")) {
     text += `\n${fg("muted", "(Ctrl+O to expand)")}`;
   }
 

@@ -123,6 +123,20 @@ test("captures child tool execution progress for live fork updates", () => {
 
   assert.equal(result.toolExecutions[0].updates, 1);
   assert.equal(result.toolExecutions[0].latestText, "file contents so far");
+  assert.deepEqual(result.activities, [
+    {
+      type: "tool",
+      toolCallId: "call_1",
+      toolName: "read",
+      status: "running",
+      updates: 1,
+      argsPreview: '{"path":"src/index.ts"}',
+      displayText: "read src/index.ts",
+      isError: false,
+      latestText: "file contents so far",
+      activityOrder: 1,
+    },
+  ]);
   assert.equal(getForkProgressText(result), "… read src/index.ts\nfile contents so far");
 });
 
@@ -167,6 +181,9 @@ test("captures child thinking progress metadata without storing thinking text", 
     result,
   );
   assert.deepEqual(result.thinking, { status: "completed", chars: 14, activityOrder: 1 });
+  assert.deepEqual(result.activities, [
+    { type: "thinking", status: "completed", chars: 14, activityOrder: 1 },
+  ]);
   assert.equal(getForkProgressText(result), "✓ thinking 14 chars");
 });
 
@@ -222,6 +239,95 @@ test("orders child thinking activity relative to tool activity", () => {
   assert.equal(
     getForkProgressText(result),
     "✓ bash $ npm test\n✓ thinking 13 chars\n… read src/render.ts",
+  );
+});
+
+test("keeps separate thinking phases fixed in the activity timeline", () => {
+  const result = makeResult();
+
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_start" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_end", content: "first thought" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_1",
+      toolName: "bash",
+      args: { command: "npm test" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_end",
+      toolCallId: "call_1",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "pass" }] },
+      isError: false,
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_start" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "later" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_end", content: "second thought" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_2",
+      toolName: "read",
+      args: { path: "src/render.ts" },
+    },
+    result,
+  );
+
+  assert.deepEqual(
+    result.activities.map((activity) => ({
+      type: activity.type,
+      status: activity.status,
+      chars: activity.chars,
+      toolName: activity.toolName,
+      activityOrder: activity.activityOrder,
+    })),
+    [
+      { type: "thinking", status: "completed", chars: 13, toolName: undefined, activityOrder: 1 },
+      { type: "tool", status: "completed", chars: undefined, toolName: "bash", activityOrder: 2 },
+      { type: "thinking", status: "completed", chars: 14, toolName: undefined, activityOrder: 3 },
+      { type: "tool", status: "running", chars: undefined, toolName: "read", activityOrder: 4 },
+    ],
+  );
+  assert.equal(result.thinking.activityOrder, 3);
+  assert.equal(
+    getForkProgressText(result),
+    "✓ thinking 13 chars\n✓ bash $ npm test\n✓ thinking 14 chars\n… read src/render.ts",
   );
 });
 
@@ -379,7 +485,9 @@ test("bounds stored child tool execution history", () => {
   assert.equal(result.toolExecutions.length, 25);
   assert.equal(result.toolExecutions[0].toolCallId, "call_5");
   assert.equal(result.toolExecutions.at(-1).toolCallId, "call_29");
-  assert.match(getForkProgressText(result), /\.\.\. 20 earlier tool calls\n… read src\/20\.ts/);
+  assert.equal(result.activityCount, 30);
+  assert.equal(result.activities.length, 30);
+  assert.match(getForkProgressText(result), /\.\.\. 20 earlier activities\n… read src\/20\.ts/);
 });
 
 test("invalid JSON lines are ignored", () => {

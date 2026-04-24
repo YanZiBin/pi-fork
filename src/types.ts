@@ -33,6 +33,18 @@ export interface ForkThinkingState {
   activityOrder?: number;
 }
 
+export interface ForkToolActivity extends ForkToolExecution {
+  type: "tool";
+  activityOrder: number;
+}
+
+export interface ForkThinkingActivity extends ForkThinkingState {
+  type: "thinking";
+  activityOrder: number;
+}
+
+export type ForkActivity = ForkToolActivity | ForkThinkingActivity;
+
 export interface ForkResult {
   task: string;
   exitCode: number;
@@ -45,6 +57,8 @@ export interface ForkResult {
   errorMessage?: string;
   sawAgentEnd?: boolean;
   thinking?: ForkThinkingState;
+  activityCount?: number;
+  activities?: ForkActivity[];
   toolExecutionCount?: number;
   toolExecutions?: ForkToolExecution[];
 }
