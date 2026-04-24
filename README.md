@@ -36,7 +36,8 @@ System:
 
 Messages:
   Current active branch rebuilt from temporary JSONL
-  User: You are running in a forked Pi worker process...
+  User: You are a fork of the main agent. You have full access to the session context above.
+        Complete the task below and nothing beyond it...
         Task:
         <task>
 ```

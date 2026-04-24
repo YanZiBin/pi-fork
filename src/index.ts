@@ -24,7 +24,7 @@ import {
 const ForkParams = Type.Object({
   task: Type.String({
     description:
-      "Give the forked worker a focused, self-contained task. The worker starts from your current session branch context and returns its findings to you.",
+      "The task for the fork to complete. Specify what to do, what to return, and where the fork's decision authority ends — it will surface ambiguities back to you rather than resolve them on your behalf.",
   }),
 });
 
@@ -66,7 +66,7 @@ export default function (pi: ExtensionAPI) {
     name: "fork",
     label: "Fork",
     description:
-      "Delegate a focused task to a worker that is forked from your current session branch context. The worker receives only the task you provide as its new instruction and reports its result back to you.",
+      "Spawn a fork of yourself to handle a focused task. The fork inherits your full session context and works independently — its activity stays out of your context window. Use for anything that would generate context noise: exploration, implementation, testing, iteration.",
     parameters: ForkParams,
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {

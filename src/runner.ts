@@ -55,10 +55,8 @@ function cleanupTempDir(dir: string | null): void {
 
 export function buildForkTaskPrompt(task: string): string {
   return [
-    "You are running in a forked Pi worker process spawned by the main agent.",
-    "",
-    "You inherited the current session context above. Complete only the task below and report the result clearly.",
-    "",
+    "You are a fork of the main agent. You have full access to the session context above.",
+    "Complete the task below and nothing beyond it. Report back clearly — include the files you touched as part of describing what you did, note any decisions you made, and surface anything that felt outside your authority rather than resolving it yourself.",
     "Task:",
     task,
   ].join("\n");
