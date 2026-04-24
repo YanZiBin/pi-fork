@@ -295,6 +295,44 @@ test("fork progress prefixes activity rows with the child tool name", () => {
   assert.equal(getForkProgressText(result), "✓ bash $ npm test\n✓ fork inspect the renderer\ndone");
 });
 
+test("fork progress renders failed tool errors inline", () => {
+  const result = makeResult();
+
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_1",
+      toolName: "read",
+      args: { path: "missing.txt" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_end",
+      toolCallId: "call_1",
+      toolName: "read",
+      result: { content: [{ type: "text", text: "ENOENT: no such file or directory\nmore details" }] },
+      isError: true,
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_2",
+      toolName: "grep",
+      args: { pattern: "render", path: "src" },
+    },
+    result,
+  );
+
+  assert.equal(
+    getForkProgressText(result),
+    "× read missing.txt — ENOENT: no such file or directory more details\n… grep render in src",
+  );
+});
+
 test("fork progress prefers final assistant output over tool progress", () => {
   const result = makeResult();
 

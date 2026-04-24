@@ -4,6 +4,7 @@
 
 const MAX_TOOL_PREVIEW_CHARS = 1200;
 const MAX_TOOL_ARGS_PREVIEW_CHARS = 300;
+const MAX_INLINE_ERROR_PREVIEW_CHARS = 160;
 const MAX_STORED_TOOL_EXECUTIONS = 25;
 
 function getSeenMessageSignatures(result) {
@@ -435,6 +436,12 @@ function formatToolStatusIcon(tool) {
   return "✓";
 }
 
+function formatToolErrorSuffix(tool) {
+  if (tool?.status !== "error" && !tool?.isError) return "";
+  if (typeof tool.latestText !== "string" || !tool.latestText.trim()) return "";
+  return ` — ${truncateInline(tool.latestText, MAX_INLINE_ERROR_PREVIEW_CHARS)}`;
+}
+
 function formatThinkingProgress(result) {
   const thinking = result?.thinking;
   if (!thinking || typeof thinking !== "object") return "";
@@ -467,14 +474,14 @@ function formatToolProgress(result) {
   toShow.forEach((tool, index) => {
     activities.push({
       order: getActivityOrder(tool, index + 1),
-      text: `${formatToolStatusIcon(tool)} ${tool.displayText || tool.toolName || "tool"}`,
+      text: `${formatToolStatusIcon(tool)} ${tool.displayText || tool.toolName || "tool"}${formatToolErrorSuffix(tool)}`,
     });
   });
   activities.sort((a, b) => a.order - b.order);
   for (const activity of activities) lines.push(activity.text);
 
   const activeTool = getLatestRelevantToolExecution(result);
-  if (activeTool?.latestText) {
+  if (activeTool?.latestText && activeTool.status !== "error" && !activeTool.isError) {
     lines.push(activeTool.latestText);
   }
 

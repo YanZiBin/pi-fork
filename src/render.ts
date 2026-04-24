@@ -15,6 +15,7 @@ const COLLAPSED_OUTPUT_LINES = 3;
 const MAX_TASK_PREVIEW_CHARS = 72;
 const MAX_TEXT_PREVIEW_CHARS = 280;
 const MAX_ERROR_PREVIEW_CHARS = 1200;
+const MAX_INLINE_ERROR_PREVIEW_CHARS = 160;
 
 function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
@@ -28,6 +29,10 @@ function taskPreview(task: unknown): string {
 
 function textPreview(text: string, maxChars = MAX_TEXT_PREVIEW_CHARS): string {
   return truncate(text.trim().split(/\r?\n/).slice(0, COLLAPSED_OUTPUT_LINES).join("\n"), maxChars);
+}
+
+function inlinePreview(text: string, maxChars = MAX_INLINE_ERROR_PREVIEW_CHARS): string {
+  return truncate(text.replace(/\s+/g, " ").trim(), maxChars);
 }
 
 function fmtCount(n: number): string {
@@ -103,6 +108,12 @@ function toolLabel(tool: any): string {
   return tool?.displayText || tool?.toolName || "tool";
 }
 
+function toolErrorSuffix(tool: any, fg: (color: any, text: string) => string): string {
+  if (tool?.status !== "error" && !tool?.isError) return "";
+  if (typeof tool.latestText !== "string" || !tool.latestText.trim()) return "";
+  return fg("error", ` — ${inlinePreview(tool.latestText)}`);
+}
+
 function totalToolExecutions(result: ForkResult): number {
   const stored = Array.isArray(result.toolExecutions) ? result.toolExecutions.length : 0;
   return typeof result.toolExecutionCount === "number" ? Math.max(result.toolExecutionCount, stored) : stored;
@@ -113,10 +124,6 @@ function latestToolWithPreview(result: ForkResult): any | undefined {
   for (let i = tools.length - 1; i >= 0; i--) {
     const tool = tools[i];
     if (tool?.status === "running" && tool.latestText) return tool;
-  }
-  for (let i = tools.length - 1; i >= 0; i--) {
-    const tool = tools[i];
-    if ((tool?.status === "error" || tool?.isError) && tool.latestText) return tool;
   }
   return undefined;
 }
@@ -156,7 +163,7 @@ function renderToolLines(
   toShow.forEach((tool, index) => {
     activities.push({
       order: activityOrder(tool, index + 1),
-      text: `${toolIcon(tool, fg)} ${fg(tool?.status === "error" ? "error" : "toolOutput", toolLabel(tool))}`,
+      text: `${toolIcon(tool, fg)} ${fg(tool?.status === "error" ? "error" : "toolOutput", toolLabel(tool))}${toolErrorSuffix(tool, fg)}`,
     });
   });
   activities.sort((a, b) => a.order - b.order);
