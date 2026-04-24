@@ -239,10 +239,7 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
   if (expanded) {
     const container = new Container();
     container.addChild(new Spacer(1));
-    let header = `${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
-    if (status !== "success" && result.stopReason) {
-      header += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
-    }
+    const header = `${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
     container.addChild(new Text(header, 0, 0));
 
     addSection(container, "─── Task ───", new Text(fg("dim", result.task || "..."), 0, 0), fg);
@@ -272,9 +269,6 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
 
   const collapsedStatusPrefix = status === "running" ? "" : "\n";
   let text = `${collapsedStatusPrefix}${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
-  if (status !== "success" && result.stopReason) {
-    text += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
-  }
 
   if (toolsText) {
     text += `\n${toolsText}`;
