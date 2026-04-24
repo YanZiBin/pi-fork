@@ -15,7 +15,7 @@
     ]
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test 'test/**/*.mjs'"
   },
   "keywords": [
     "pi",
@@ -28,6 +28,7 @@
     "@mariozechner/pi-agent-core": ">=0.37.0",
     "@mariozechner/pi-ai": ">=0.37.0",
     "@mariozechner/pi-coding-agent": ">=0.37.0",
+    "@mariozechner/pi-tui": ">=0.37.0",
     "@sinclair/typebox": ">=0.34.0"
   },
   "peerDependenciesMeta": {
@@ -35,12 +36,6 @@
       "optional": true
     },
     "@mariozechner/pi-ai": {
-      "optional": true
-    },
-    "@mariozechner/pi-coding-agent": {
-      "optional": true
-    },
-    "@sinclair/typebox": {
       "optional": true
     }
   }

@@ -12,6 +12,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { loadConfig } from "./config.js";
+import { renderForkCall, renderForkResult } from "./render.js";
 import { runFork } from "./runner.js";
 import { getResultSummaryText } from "./runner-events.js";
 import {
@@ -68,6 +69,8 @@ export default function (pi: ExtensionAPI) {
     description:
       "Spawn a fork of yourself to handle a focused task. The fork inherits your full session context and works independently — its activity stays out of your context window. Use for anything that would generate context noise: exploration, implementation, testing, iteration.",
     parameters: ForkParams,
+    renderCall: renderForkCall,
+    renderResult: renderForkResult,
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const snapshot = buildForkSessionSnapshotJsonl(ctx.sessionManager);

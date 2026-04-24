@@ -1,0 +1,231 @@
+/**
+ * Rich TUI rendering for the fork tool.
+ *
+ * The runner still returns plain text content for non-interactive/JSON callers;
+ * these hooks only enhance Pi's interactive tool-call widget.
+ */
+
+import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
+import { getFinalAssistantText } from "./runner-events.js";
+import { type ForkResult, isResultError, isResultSuccess } from "./types.js";
+
+const COLLAPSED_TOOL_COUNT = 8;
+const COLLAPSED_OUTPUT_LINES = 3;
+const MAX_TASK_PREVIEW_CHARS = 72;
+const MAX_TEXT_PREVIEW_CHARS = 280;
+const MAX_ERROR_PREVIEW_CHARS = 1200;
+
+function truncate(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+function taskPreview(task: unknown): string {
+  if (typeof task !== "string" || !task.trim()) return "...";
+  return truncate(task.replace(/\s+/g, " ").trim(), MAX_TASK_PREVIEW_CHARS);
+}
+
+function textPreview(text: string, maxChars = MAX_TEXT_PREVIEW_CHARS): string {
+  return truncate(text.trim().split(/\r?\n/).slice(0, COLLAPSED_OUTPUT_LINES).join("\n"), maxChars);
+}
+
+function fmtTokens(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  if (n < 1000) return String(Math.round(n));
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
+  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+function fmtUsage(result: ForkResult): string {
+  const usage = result.usage;
+  if (!usage) return "";
+
+  const parts: string[] = [];
+  if (usage.turns) parts.push(`${usage.turns} turn${usage.turns === 1 ? "" : "s"}`);
+  if (usage.input) parts.push(`↑${fmtTokens(usage.input)}`);
+  if (usage.output) parts.push(`↓${fmtTokens(usage.output)}`);
+  if (usage.cacheRead) parts.push(`R${fmtTokens(usage.cacheRead)}`);
+  if (usage.cacheWrite) parts.push(`W${fmtTokens(usage.cacheWrite)}`);
+  if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
+  if (result.model) parts.push(result.model);
+  return parts.join(" ");
+}
+
+function getPrimaryResult(toolResult: any): ForkResult | undefined {
+  const results = toolResult?.details?.results;
+  return Array.isArray(results) && results.length > 0 ? results[0] : undefined;
+}
+
+function getFallbackText(toolResult: any): string {
+  const content = toolResult?.content;
+  if (!Array.isArray(content)) return "(no output)";
+  const text = content.find((part) => part?.type === "text" && typeof part.text === "string");
+  return text?.text || "(no output)";
+}
+
+function forkStatus(result: ForkResult): "running" | "success" | "error" {
+  if (result.exitCode === -1) return "running";
+  if (isResultSuccess(result)) return "success";
+  if (isResultError(result)) return "error";
+  return "error";
+}
+
+function forkIcon(result: ForkResult, fg: (color: any, text: string) => string): string {
+  const status = forkStatus(result);
+  if (status === "running") return fg("warning", "⏳");
+  if (status === "error") return fg("error", "✗");
+  return fg("success", "✓");
+}
+
+function toolIcon(tool: any, fg: (color: any, text: string) => string): string {
+  if (tool?.status === "running") return fg("warning", "⏳");
+  if (tool?.status === "error" || tool?.isError) return fg("error", "✗");
+  return fg("muted", "→");
+}
+
+function toolLabel(tool: any): string {
+  return tool?.displayText || tool?.toolName || "tool";
+}
+
+function totalToolExecutions(result: ForkResult): number {
+  const stored = Array.isArray(result.toolExecutions) ? result.toolExecutions.length : 0;
+  return typeof result.toolExecutionCount === "number" ? Math.max(result.toolExecutionCount, stored) : stored;
+}
+
+function latestToolWithPreview(result: ForkResult): any | undefined {
+  const tools = Array.isArray(result.toolExecutions) ? result.toolExecutions : [];
+  for (let i = tools.length - 1; i >= 0; i--) {
+    const tool = tools[i];
+    if (tool?.status === "running" && tool.latestText) return tool;
+  }
+  for (let i = tools.length - 1; i >= 0; i--) {
+    const tool = tools[i];
+    if ((tool?.status === "error" || tool?.isError) && tool.latestText) return tool;
+  }
+  return undefined;
+}
+
+function renderToolLines(
+  result: ForkResult,
+  fg: (color: any, text: string) => string,
+  limit?: number,
+): string {
+  const tools = Array.isArray(result.toolExecutions) ? result.toolExecutions : [];
+  if (tools.length === 0) return "";
+
+  const toShow = limit ? tools.slice(-limit) : tools;
+  const skipped = Math.max(0, totalToolExecutions(result) - toShow.length);
+  const lines: string[] = [];
+  if (skipped > 0) {
+    lines.push(fg("muted", `... ${skipped} earlier tool call${skipped === 1 ? "" : "s"}`));
+  }
+
+  for (const tool of toShow) {
+    lines.push(`${toolIcon(tool, fg)} ${fg(tool?.status === "error" ? "error" : "toolOutput", toolLabel(tool))}`);
+  }
+
+  const previewTool = latestToolWithPreview(result);
+  if (previewTool?.latestText) {
+    lines.push("");
+    lines.push(fg("toolOutput", textPreview(previewTool.latestText, MAX_TEXT_PREVIEW_CHARS)));
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+function errorText(result: ForkResult): string {
+  const message = result.errorMessage?.trim() || result.stderr?.trim() || "";
+  return message ? truncate(message, MAX_ERROR_PREVIEW_CHARS) : "";
+}
+
+function addSection(container: any, title: string, child: any, fg: (color: any, text: string) => string) {
+  container.addChild(new Spacer(1));
+  container.addChild(new Text(fg("muted", title), 0, 0));
+  container.addChild(child);
+}
+
+export function renderForkCall(args: any, theme: any) {
+  const fg = theme.fg.bind(theme);
+  let text = fg("toolTitle", theme.bold("fork"));
+  text += `\n  ${fg("dim", taskPreview(args?.task))}`;
+  return new Text(text, 0, 0);
+}
+
+export function renderForkResult(toolResult: any, { expanded }: { expanded: boolean }, theme: any) {
+  const result = getPrimaryResult(toolResult);
+  if (!result) return new Text(getFallbackText(toolResult), 0, 0);
+
+  const fg = theme.fg.bind(theme);
+  const status = forkStatus(result);
+  const icon = forkIcon(result, fg);
+  const finalOutput = getFinalAssistantText(result.messages);
+  const usage = fmtUsage(result);
+  const toolsText = renderToolLines(result, fg, expanded ? undefined : COLLAPSED_TOOL_COUNT);
+  const mdTheme = getMarkdownTheme();
+
+  if (expanded) {
+    const container = new Container();
+    let header = `${icon} ${fg("toolTitle", theme.bold("fork"))}`;
+    if (status !== "success" && result.stopReason) {
+      header += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
+    }
+    container.addChild(new Text(header, 0, 0));
+
+    addSection(container, "─── Task ───", new Text(fg("dim", result.task || "..."), 0, 0), fg);
+
+    if (toolsText) {
+      addSection(container, "─── Activity ───", new Text(toolsText, 0, 0), fg);
+    }
+
+    if (finalOutput) {
+      addSection(container, "─── Output ───", new Markdown(finalOutput.trim(), 0, 0, mdTheme), fg);
+    } else if (status !== "running") {
+      addSection(container, "─── Output ───", new Text(fg("muted", "(no final response)"), 0, 0), fg);
+    }
+
+    const err = status === "error" ? errorText(result) : "";
+    if (err) {
+      addSection(container, "─── Error ───", new Text(fg("error", err), 0, 0), fg);
+    }
+
+    if (usage) {
+      container.addChild(new Spacer(1));
+      container.addChild(new Text(fg("dim", usage), 0, 0));
+    }
+
+    return container;
+  }
+
+  let text = `${icon} ${fg("toolTitle", theme.bold("fork"))}`;
+  if (status !== "success" && result.stopReason) {
+    text += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
+  }
+  text += `\n${fg("dim", taskPreview(result.task))}`;
+
+  if (toolsText) {
+    text += `\n${toolsText}`;
+    if (finalOutput) text += `\n\n${fg("toolOutput", textPreview(finalOutput))}`;
+  } else if (finalOutput) {
+    text += `\n${fg("toolOutput", textPreview(finalOutput))}`;
+  } else if (status === "running") {
+    text += `\n${fg("muted", "(running...)")}`;
+  } else {
+    text += `\n${fg("muted", "(no final response)")}`;
+  }
+
+  if (status === "error") {
+    const err = errorText(result);
+    if (err) text += `\n${fg("error", textPreview(err))}`;
+  }
+
+  if (usage) text += `\n${fg("dim", usage)}`;
+
+  const totalTools = totalToolExecutions(result);
+  if (!expanded && (totalTools > COLLAPSED_TOOL_COUNT || finalOutput || status !== "running")) {
+    text += `\n${fg("muted", "(Ctrl+O to expand)")}`;
+  }
+
+  return new Text(text, 0, 0);
+}

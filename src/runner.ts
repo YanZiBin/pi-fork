@@ -11,12 +11,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { parseInheritedCliArgs } from "./runner-cli.js";
-import { processPiJsonLine } from "./runner-events.js";
+import { getForkProgressText, processPiJsonLine } from "./runner-events.js";
 import {
   type ForkDetails,
   type ForkResult,
   emptyUsage,
-  getFinalOutput,
   normalizeCompletedResult,
 } from "./types.js";
 
@@ -152,7 +151,7 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
       content: [
         {
           type: "text",
-          text: getFinalOutput(result.messages) || "(running...)",
+          text: getForkProgressText(result),
         },
       ],
       details: makeDetails([result]),

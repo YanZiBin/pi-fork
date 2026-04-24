@@ -15,6 +15,17 @@ export interface UsageStats {
   turns: number;
 }
 
+export interface ForkToolExecution {
+  toolCallId: string;
+  toolName: string;
+  status: "running" | "completed" | "error";
+  updates: number;
+  argsPreview?: string;
+  displayText?: string;
+  latestText?: string;
+  isError?: boolean;
+}
+
 export interface ForkResult {
   task: string;
   exitCode: number;
@@ -25,6 +36,8 @@ export interface ForkResult {
   stopReason?: string;
   errorMessage?: string;
   sawAgentEnd?: boolean;
+  toolExecutionCount?: number;
+  toolExecutions?: ForkToolExecution[];
 }
 
 export interface ForkDetails {

@@ -2,6 +2,10 @@
  * Helpers for parsing Pi JSON mode events and summarizing fork results.
  */
 
+const MAX_TOOL_PREVIEW_CHARS = 1200;
+const MAX_TOOL_ARGS_PREVIEW_CHARS = 300;
+const MAX_STORED_TOOL_EXECUTIONS = 25;
+
 function getSeenMessageSignatures(result) {
   if (!Object.prototype.hasOwnProperty.call(result, "__seenMessageSignatures")) {
     Object.defineProperty(result, "__seenMessageSignatures", {
@@ -27,6 +31,100 @@ function stableStringify(value) {
   return `{${entries
     .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
     .join(",")}}`;
+}
+
+function truncateMiddle(text, maxChars) {
+  if (typeof text !== "string" || text.length <= maxChars) return text;
+  const keep = Math.max(0, maxChars - 15);
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${text.slice(0, head)}\n… truncated …\n${text.slice(text.length - tail)}`;
+}
+
+function truncateTail(text, maxChars) {
+  if (typeof text !== "string" || text.length <= maxChars) return text;
+  return `… truncated …\n${text.slice(text.length - maxChars)}`;
+}
+
+function stringifyPreview(value, maxChars) {
+  if (value === undefined) return "";
+  if (typeof value === "string") return truncateMiddle(value, maxChars);
+
+  try {
+    return truncateMiddle(JSON.stringify(value), maxChars);
+  } catch {
+    return "";
+  }
+}
+
+function shortPath(value) {
+  if (typeof value !== "string" || !value) return "...";
+  return value.replace(/^\/home\/[^/]+/, "~");
+}
+
+function formatToolCallPreview(toolName, args) {
+  if (!args || typeof args !== "object") return toolName || "tool";
+
+  switch (toolName) {
+    case "bash": {
+      const command = typeof args.command === "string" ? args.command : "...";
+      return `$ ${truncateMiddle(command, 80)}`;
+    }
+    case "read": {
+      const filePath = shortPath(args.path || args.file_path);
+      const offset = args.offset;
+      const limit = args.limit;
+      const range = offset !== undefined || limit !== undefined ? `:${offset ?? 1}${limit !== undefined ? `-${(offset ?? 1) + limit - 1}` : ""}` : "";
+      return `read ${filePath}${range}`;
+    }
+    case "write":
+      return `write ${shortPath(args.path || args.file_path)}`;
+    case "edit":
+      return `edit ${shortPath(args.path || args.file_path)}`;
+    case "ls":
+      return `ls ${shortPath(args.path || ".")}`;
+    case "find":
+      return `find ${stringifyPreview(args.pattern || "*", 60)} in ${shortPath(args.path || ".")}`;
+    case "grep":
+      return `grep ${stringifyPreview(args.pattern || "", 60)} in ${shortPath(args.path || ".")}`;
+    default: {
+      const argsPreview = stringifyPreview(args, 70);
+      return argsPreview ? `${toolName} ${argsPreview}` : toolName || "tool";
+    }
+  }
+}
+
+function extractTextFromContent(content) {
+  if (!Array.isArray(content)) return "";
+
+  const parts = [];
+  for (const part of content) {
+    if (!part || typeof part !== "object") continue;
+    if (part.type === "text" && typeof part.text === "string") {
+      parts.push(part.text);
+    } else if (part.type === "image") {
+      parts.push("[image]");
+    }
+  }
+
+  return parts.join("\n").trim();
+}
+
+function extractResultText(toolResult) {
+  if (!toolResult || typeof toolResult !== "object") return "";
+
+  const contentText = extractTextFromContent(toolResult.content);
+  if (contentText) return truncateTail(contentText, MAX_TOOL_PREVIEW_CHARS);
+
+  if (typeof toolResult.text === "string") {
+    return truncateTail(toolResult.text.trim(), MAX_TOOL_PREVIEW_CHARS);
+  }
+
+  if (typeof toolResult.message === "string") {
+    return truncateTail(toolResult.message.trim(), MAX_TOOL_PREVIEW_CHARS);
+  }
+
+  return "";
 }
 
 function updateAssistantMetadata(result, message) {
@@ -71,6 +169,79 @@ function addAssistantMessages(result, messages) {
   return changed;
 }
 
+function ensureToolExecutions(result) {
+  if (!Array.isArray(result.toolExecutions)) result.toolExecutions = [];
+  return result.toolExecutions;
+}
+
+function findToolExecution(result, event) {
+  const toolExecutions = ensureToolExecutions(result);
+  const toolCallId = typeof event.toolCallId === "string" ? event.toolCallId : undefined;
+
+  let tool = toolCallId
+    ? toolExecutions.find((entry) => entry.toolCallId === toolCallId)
+    : undefined;
+
+  if (!tool) {
+    const totalBefore = typeof result.toolExecutionCount === "number"
+      ? result.toolExecutionCount
+      : toolExecutions.length;
+    result.toolExecutionCount = totalBefore + 1;
+    tool = {
+      toolCallId: toolCallId || `unknown-${result.toolExecutionCount}`,
+      toolName: typeof event.toolName === "string" ? event.toolName : "tool",
+      status: "running",
+      updates: 0,
+    };
+    toolExecutions.push(tool);
+    while (toolExecutions.length > MAX_STORED_TOOL_EXECUTIONS) {
+      toolExecutions.shift();
+    }
+  }
+
+  if (typeof event.toolName === "string") tool.toolName = event.toolName;
+  if (Object.prototype.hasOwnProperty.call(event, "args")) {
+    tool.argsPreview = stringifyPreview(event.args, MAX_TOOL_ARGS_PREVIEW_CHARS);
+    tool.displayText = formatToolCallPreview(tool.toolName, event.args);
+  }
+
+  if (!tool.displayText) tool.displayText = tool.toolName;
+
+  return tool;
+}
+
+function processToolExecutionEvent(event, result) {
+  const tool = findToolExecution(result, event);
+
+  switch (event.type) {
+    case "tool_execution_start":
+      tool.status = "running";
+      tool.isError = false;
+      tool.latestText = "";
+      return true;
+
+    case "tool_execution_update": {
+      tool.status = "running";
+      tool.isError = false;
+      tool.updates = (tool.updates || 0) + 1;
+      const latestText = extractResultText(event.partialResult);
+      if (latestText) tool.latestText = latestText;
+      return true;
+    }
+
+    case "tool_execution_end": {
+      tool.status = event.isError ? "error" : "completed";
+      tool.isError = Boolean(event.isError);
+      const latestText = extractResultText(event.result);
+      if (latestText) tool.latestText = latestText;
+      return true;
+    }
+
+    default:
+      return false;
+  }
+}
+
 export function processPiEvent(event, result) {
   if (!event || typeof event !== "object") return false;
 
@@ -84,6 +255,11 @@ export function processPiEvent(event, result) {
     case "agent_end":
       result.sawAgentEnd = true;
       return addAssistantMessages(result, event.messages);
+
+    case "tool_execution_start":
+    case "tool_execution_update":
+    case "tool_execution_end":
+      return processToolExecutionEvent(event, result);
 
     default:
       return false;
@@ -120,6 +296,59 @@ export function getFinalAssistantText(messages) {
   }
 
   return "";
+}
+
+function getLatestRelevantToolExecution(result) {
+  const toolExecutions = Array.isArray(result?.toolExecutions) ? result.toolExecutions : [];
+  if (toolExecutions.length === 0) return undefined;
+
+  for (let i = toolExecutions.length - 1; i >= 0; i--) {
+    if (toolExecutions[i]?.status === "running") return toolExecutions[i];
+  }
+
+  return toolExecutions[toolExecutions.length - 1];
+}
+
+function formatToolStatusIcon(tool) {
+  if (tool?.status === "error") return "✗";
+  return "→";
+}
+
+function formatToolProgress(result) {
+  const toolExecutions = Array.isArray(result?.toolExecutions) ? result.toolExecutions : [];
+  if (toolExecutions.length === 0) return "";
+
+  const toShow = toolExecutions.slice(-10);
+  const totalTools = typeof result?.toolExecutionCount === "number"
+    ? Math.max(result.toolExecutionCount, toolExecutions.length)
+    : toolExecutions.length;
+  const skipped = Math.max(0, totalTools - toShow.length);
+  const lines = [];
+  if (skipped > 0) lines.push(`... ${skipped} earlier tool call${skipped === 1 ? "" : "s"}`);
+  for (const tool of toShow) {
+    lines.push(`${formatToolStatusIcon(tool)} ${tool.displayText || tool.toolName || "tool"}`);
+  }
+
+  const activeTool = getLatestRelevantToolExecution(result);
+  if (activeTool?.latestText) {
+    lines.push(activeTool.latestText);
+  }
+
+  return lines.join("\n").trim();
+}
+
+export function getForkProgressText(result) {
+  const finalText = getFinalAssistantText(result?.messages);
+  if (finalText) return finalText;
+
+  const toolProgress = formatToolProgress(result);
+  if (toolProgress) return toolProgress;
+
+  if (typeof result?.errorMessage === "string" && result.errorMessage.trim()) {
+    return result.errorMessage.trim();
+  }
+
+  return "(running...)";
 }
 
 export function getResultSummaryText(result) {
