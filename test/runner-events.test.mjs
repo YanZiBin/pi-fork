@@ -102,6 +102,7 @@ test("captures child tool execution progress for live fork updates", () => {
       displayText: "read src/index.ts",
       isError: false,
       latestText: "",
+      activityOrder: 1,
     },
   ]);
   assert.equal(getForkProgressText(result), "… read src/index.ts");
@@ -138,7 +139,7 @@ test("captures child thinking progress metadata without storing thinking text", 
     ),
     true,
   );
-  assert.deepEqual(result.thinking, { status: "running", chars: 0 });
+  assert.deepEqual(result.thinking, { status: "running", chars: 0, activityOrder: 1 });
   assert.equal(getForkProgressText(result), "… thinking...");
 
   processPiEvent(
@@ -155,7 +156,7 @@ test("captures child thinking progress metadata without storing thinking text", 
     },
     result,
   );
-  assert.deepEqual(result.thinking, { status: "running", chars: 7 });
+  assert.deepEqual(result.thinking, { status: "running", chars: 7, activityOrder: 1 });
   assert.equal(getForkProgressText(result), "… thinking 7 chars");
 
   processPiEvent(
@@ -165,8 +166,63 @@ test("captures child thinking progress metadata without storing thinking text", 
     },
     result,
   );
-  assert.deepEqual(result.thinking, { status: "completed", chars: 14 });
+  assert.deepEqual(result.thinking, { status: "completed", chars: 14, activityOrder: 1 });
   assert.equal(getForkProgressText(result), "✓ thinking 14 chars");
+});
+
+test("orders child thinking activity relative to tool activity", () => {
+  const result = makeResult();
+
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_1",
+      toolName: "bash",
+      args: { command: "npm test" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_end",
+      toolCallId: "call_1",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "pass" }] },
+      isError: false,
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_start" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_end", content: "later thought" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_2",
+      toolName: "read",
+      args: { path: "src/render.ts" },
+    },
+    result,
+  );
+
+  assert.equal(result.toolExecutions[0].activityOrder, 1);
+  assert.equal(result.thinking.activityOrder, 2);
+  assert.equal(result.toolExecutions[1].activityOrder, 3);
+  assert.equal(
+    getForkProgressText(result),
+    "✓ bash $ npm test\n✓ thinking 13 chars\n… read src/render.ts",
+  );
 });
 
 test("strips raw thinking blocks from stored assistant messages", () => {

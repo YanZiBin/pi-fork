@@ -212,6 +212,30 @@ function addAssistantMessages(result, messages) {
   return changed;
 }
 
+function maxActivityOrder(result) {
+  const orders = [];
+  if (typeof result?.thinking?.activityOrder === "number") orders.push(result.thinking.activityOrder);
+  if (Array.isArray(result?.toolExecutions)) {
+    for (const tool of result.toolExecutions) {
+      if (typeof tool?.activityOrder === "number") orders.push(tool.activityOrder);
+    }
+  }
+  return orders.length > 0 ? Math.max(...orders) : 0;
+}
+
+function nextActivityOrder(result) {
+  if (!Object.prototype.hasOwnProperty.call(result, "__activityOrder")) {
+    Object.defineProperty(result, "__activityOrder", {
+      value: maxActivityOrder(result),
+      enumerable: false,
+      configurable: false,
+      writable: true,
+    });
+  }
+  result.__activityOrder += 1;
+  return result.__activityOrder;
+}
+
 function ensureToolExecutions(result) {
   if (!Array.isArray(result.toolExecutions)) result.toolExecutions = [];
   return result.toolExecutions;
@@ -235,6 +259,7 @@ function findToolExecution(result, event) {
       toolName: typeof event.toolName === "string" ? event.toolName : "tool",
       status: "running",
       updates: 0,
+      activityOrder: nextActivityOrder(result),
     };
     toolExecutions.push(tool);
     while (toolExecutions.length > MAX_STORED_TOOL_EXECUTIONS) {
@@ -287,9 +312,12 @@ function processToolExecutionEvent(event, result) {
 
 function ensureThinking(result) {
   if (!result.thinking || typeof result.thinking !== "object") {
-    result.thinking = { status: "running", chars: 0 };
+    result.thinking = { status: "running", chars: 0, activityOrder: nextActivityOrder(result) };
   }
   if (typeof result.thinking.chars !== "number") result.thinking.chars = 0;
+  if (typeof result.thinking.activityOrder !== "number") {
+    result.thinking.activityOrder = nextActivityOrder(result);
+  }
   return result.thinking;
 }
 
@@ -300,6 +328,10 @@ function processMessageUpdateEvent(event, result) {
   switch (assistantEvent.type) {
     case "thinking_start": {
       const thinking = ensureThinking(result);
+      if (thinking.status === "completed") {
+        thinking.chars = 0;
+        thinking.activityOrder = nextActivityOrder(result);
+      }
       thinking.status = "running";
       return true;
     }
@@ -412,12 +444,13 @@ function formatThinkingProgress(result) {
   return `${icon} ${label}`;
 }
 
+function getActivityOrder(item, fallback) {
+  return typeof item?.activityOrder === "number" ? item.activityOrder : fallback;
+}
+
 function formatToolProgress(result) {
   const toolExecutions = Array.isArray(result?.toolExecutions) ? result.toolExecutions : [];
   const lines = [];
-  const thinkingProgress = formatThinkingProgress(result);
-  if (thinkingProgress) lines.push(thinkingProgress);
-  if (toolExecutions.length === 0) return lines.join("\n").trim();
 
   const toShow = toolExecutions.slice(-10);
   const totalTools = typeof result?.toolExecutionCount === "number"
@@ -425,9 +458,20 @@ function formatToolProgress(result) {
     : toolExecutions.length;
   const skipped = Math.max(0, totalTools - toShow.length);
   if (skipped > 0) lines.push(`... ${skipped} earlier tool call${skipped === 1 ? "" : "s"}`);
-  for (const tool of toShow) {
-    lines.push(`${formatToolStatusIcon(tool)} ${tool.displayText || tool.toolName || "tool"}`);
+
+  const activities = [];
+  const thinkingProgress = formatThinkingProgress(result);
+  if (thinkingProgress) {
+    activities.push({ order: getActivityOrder(result.thinking, 0), text: thinkingProgress });
   }
+  toShow.forEach((tool, index) => {
+    activities.push({
+      order: getActivityOrder(tool, index + 1),
+      text: `${formatToolStatusIcon(tool)} ${tool.displayText || tool.toolName || "tool"}`,
+    });
+  });
+  activities.sort((a, b) => a.order - b.order);
+  for (const activity of activities) lines.push(activity.text);
 
   const activeTool = getLatestRelevantToolExecution(result);
   if (activeTool?.latestText) {

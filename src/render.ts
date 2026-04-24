@@ -130,6 +130,10 @@ function thinkingLine(result: ForkResult, fg: (color: any, text: string) => stri
   return `${icon} ${fg("toolOutput", label)}`;
 }
 
+function activityOrder(item: any, fallback: number): number {
+  return typeof item?.activityOrder === "number" ? item.activityOrder : fallback;
+}
+
 function renderToolLines(
   result: ForkResult,
   fg: (color: any, text: string) => string,
@@ -137,9 +141,6 @@ function renderToolLines(
 ): string {
   const tools = Array.isArray(result.toolExecutions) ? result.toolExecutions : [];
   const lines: string[] = [];
-  const thinking = thinkingLine(result, fg);
-  if (thinking) lines.push(thinking);
-  if (tools.length === 0) return lines.join("\n").trimEnd();
 
   const toShow = limit ? tools.slice(-limit) : tools;
   const skipped = Math.max(0, totalToolExecutions(result) - toShow.length);
@@ -147,9 +148,19 @@ function renderToolLines(
     lines.push(fg("muted", `... ${skipped} earlier tool call${skipped === 1 ? "" : "s"}`));
   }
 
-  for (const tool of toShow) {
-    lines.push(`${toolIcon(tool, fg)} ${fg(tool?.status === "error" ? "error" : "toolOutput", toolLabel(tool))}`);
+  const activities: Array<{ order: number; text: string }> = [];
+  const thinking = thinkingLine(result, fg);
+  if (thinking) {
+    activities.push({ order: activityOrder(result.thinking, 0), text: thinking });
   }
+  toShow.forEach((tool, index) => {
+    activities.push({
+      order: activityOrder(tool, index + 1),
+      text: `${toolIcon(tool, fg)} ${fg(tool?.status === "error" ? "error" : "toolOutput", toolLabel(tool))}`,
+    });
+  });
+  activities.sort((a, b) => a.order - b.order);
+  for (const activity of activities) lines.push(activity.text);
 
   const previewTool = latestToolWithPreview(result);
   if (previewTool?.latestText) {

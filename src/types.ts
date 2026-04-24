@@ -24,11 +24,13 @@ export interface ForkToolExecution {
   displayText?: string;
   latestText?: string;
   isError?: boolean;
+  activityOrder?: number;
 }
 
 export interface ForkThinkingState {
   status: "running" | "completed";
   chars: number;
+  activityOrder?: number;
 }
 
 export interface ForkResult {
