@@ -166,7 +166,7 @@ test("captures child thinking progress metadata without storing thinking text", 
     result,
   );
   assert.deepEqual(result.thinking, { status: "completed", chars: 14 });
-  assert.equal(getForkProgressText(result), "→ thinking 14 chars");
+  assert.equal(getForkProgressText(result), "✓ thinking 14 chars");
 });
 
 test("strips raw thinking blocks from stored assistant messages", () => {
@@ -236,7 +236,7 @@ test("fork progress prefixes activity rows with the child tool name", () => {
     result,
   );
 
-  assert.equal(getForkProgressText(result), "→ bash $ npm test\n→ fork inspect the renderer\ndone");
+  assert.equal(getForkProgressText(result), "✓ bash $ npm test\n✓ fork inspect the renderer\ndone");
 });
 
 test("fork progress prefers final assistant output over tool progress", () => {

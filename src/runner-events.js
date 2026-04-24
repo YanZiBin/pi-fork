@@ -400,13 +400,13 @@ function getLatestRelevantToolExecution(result) {
 function formatToolStatusIcon(tool) {
   if (tool?.status === "running") return "…";
   if (tool?.status === "error") return "×";
-  return "→";
+  return "✓";
 }
 
 function formatThinkingProgress(result) {
   const thinking = result?.thinking;
   if (!thinking || typeof thinking !== "object") return "";
-  const icon = thinking.status === "running" ? "…" : "→";
+  const icon = thinking.status === "running" ? "…" : "✓";
   const chars = typeof thinking.chars === "number" ? thinking.chars : 0;
   const label = chars > 0 ? `thinking ${formatCount(chars)} chars` : "thinking...";
   return `${icon} ${label}`;

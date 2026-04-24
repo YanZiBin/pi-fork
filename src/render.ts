@@ -96,7 +96,7 @@ function statusLabel(status: "running" | "success" | "error"): string {
 function toolIcon(tool: any, fg: (color: any, text: string) => string): string {
   if (tool?.status === "running") return fg("warning", "…");
   if (tool?.status === "error" || tool?.isError) return fg("error", "×");
-  return fg("muted", "→");
+  return fg("success", "✓");
 }
 
 function toolLabel(tool: any): string {
@@ -124,7 +124,7 @@ function latestToolWithPreview(result: ForkResult): any | undefined {
 function thinkingLine(result: ForkResult, fg: (color: any, text: string) => string): string {
   const thinking = result.thinking;
   if (!thinking) return "";
-  const icon = thinking.status === "running" ? fg("warning", "…") : fg("muted", "→");
+  const icon = thinking.status === "running" ? fg("warning", "…") : fg("success", "✓");
   const chars = typeof thinking.chars === "number" ? thinking.chars : 0;
   const label = chars > 0 ? `thinking ${fmtCount(chars)} chars` : "thinking...";
   return `${icon} ${fg("toolOutput", label)}`;
@@ -191,6 +191,7 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
 
   if (expanded) {
     const container = new Container();
+    container.addChild(new Spacer(1));
     let header = `${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
     if (status !== "success" && result.stopReason) {
       header += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
@@ -222,7 +223,7 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
     return container;
   }
 
-  let text = `${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
+  let text = `\n${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
   if (status !== "success" && result.stopReason) {
     text += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
   }
