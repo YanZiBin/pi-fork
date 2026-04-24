@@ -30,7 +30,7 @@ function textPreview(text: string, maxChars = MAX_TEXT_PREVIEW_CHARS): string {
   return truncate(text.trim().split(/\r?\n/).slice(0, COLLAPSED_OUTPUT_LINES).join("\n"), maxChars);
 }
 
-function fmtTokens(n: number): string {
+function fmtCount(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return "0";
   if (n < 1000) return String(Math.round(n));
   if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
@@ -44,10 +44,10 @@ function fmtUsage(result: ForkResult): string {
 
   const parts: string[] = [];
   if (usage.turns) parts.push(`${usage.turns} turn${usage.turns === 1 ? "" : "s"}`);
-  if (usage.input) parts.push(`↑${fmtTokens(usage.input)}`);
-  if (usage.output) parts.push(`↓${fmtTokens(usage.output)}`);
-  if (usage.cacheRead) parts.push(`R${fmtTokens(usage.cacheRead)}`);
-  if (usage.cacheWrite) parts.push(`W${fmtTokens(usage.cacheWrite)}`);
+  if (usage.input) parts.push(`↑${fmtCount(usage.input)}`);
+  if (usage.output) parts.push(`↓${fmtCount(usage.output)}`);
+  if (usage.cacheRead) parts.push(`R${fmtCount(usage.cacheRead)}`);
+  if (usage.cacheWrite) parts.push(`W${fmtCount(usage.cacheWrite)}`);
   if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
   if (result.model) parts.push(result.model);
   return parts.join(" ");
@@ -74,14 +74,14 @@ function forkStatus(result: ForkResult): "running" | "success" | "error" {
 
 function forkIcon(result: ForkResult, fg: (color: any, text: string) => string): string {
   const status = forkStatus(result);
-  if (status === "running") return fg("warning", "⏳");
-  if (status === "error") return fg("error", "✗");
+  if (status === "running") return fg("warning", "…");
+  if (status === "error") return fg("error", "×");
   return fg("success", "✓");
 }
 
 function toolIcon(tool: any, fg: (color: any, text: string) => string): string {
-  if (tool?.status === "running") return fg("warning", "⏳");
-  if (tool?.status === "error" || tool?.isError) return fg("error", "✗");
+  if (tool?.status === "running") return fg("warning", "…");
+  if (tool?.status === "error" || tool?.isError) return fg("error", "×");
   return fg("muted", "→");
 }
 
@@ -107,17 +107,28 @@ function latestToolWithPreview(result: ForkResult): any | undefined {
   return undefined;
 }
 
+function thinkingLine(result: ForkResult, fg: (color: any, text: string) => string): string {
+  const thinking = result.thinking;
+  if (!thinking) return "";
+  const icon = thinking.status === "running" ? fg("warning", "…") : fg("muted", "→");
+  const chars = typeof thinking.chars === "number" ? thinking.chars : 0;
+  const label = chars > 0 ? `thinking ${fmtCount(chars)} chars` : "thinking...";
+  return `${icon} ${fg("toolOutput", label)}`;
+}
+
 function renderToolLines(
   result: ForkResult,
   fg: (color: any, text: string) => string,
   limit?: number,
 ): string {
   const tools = Array.isArray(result.toolExecutions) ? result.toolExecutions : [];
-  if (tools.length === 0) return "";
+  const lines: string[] = [];
+  const thinking = thinkingLine(result, fg);
+  if (thinking) lines.push(thinking);
+  if (tools.length === 0) return lines.join("\n").trimEnd();
 
   const toShow = limit ? tools.slice(-limit) : tools;
   const skipped = Math.max(0, totalToolExecutions(result) - toShow.length);
-  const lines: string[] = [];
   if (skipped > 0) {
     lines.push(fg("muted", `... ${skipped} earlier tool call${skipped === 1 ? "" : "s"}`));
   }
@@ -148,8 +159,7 @@ function addSection(container: any, title: string, child: any, fg: (color: any, 
 
 export function renderForkCall(args: any, theme: any) {
   const fg = theme.fg.bind(theme);
-  let text = fg("toolTitle", theme.bold("fork"));
-  text += `\n  ${fg("dim", taskPreview(args?.task))}`;
+  const text = `${fg("toolTitle", theme.bold("fork"))} ${fg("dim", taskPreview(args?.task))}`;
   return new Text(text, 0, 0);
 }
 
@@ -202,7 +212,7 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
   if (status !== "success" && result.stopReason) {
     text += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
   }
-  text += `\n${fg("dim", taskPreview(result.task))}`;
+  text += ` ${fg("dim", taskPreview(result.task))}`;
 
   if (toolsText) {
     text += `\n${toolsText}`;

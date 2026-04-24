@@ -100,7 +100,7 @@ test("captures child tool execution progress for live fork updates", () => {
       latestText: "",
     },
   ]);
-  assert.equal(getForkProgressText(result), "→ read src/index.ts");
+  assert.equal(getForkProgressText(result), "… read src/index.ts");
 
   assert.equal(
     processPiEvent(
@@ -118,7 +118,121 @@ test("captures child tool execution progress for live fork updates", () => {
 
   assert.equal(result.toolExecutions[0].updates, 1);
   assert.equal(result.toolExecutions[0].latestText, "file contents so far");
-  assert.equal(getForkProgressText(result), "→ read src/index.ts\nfile contents so far");
+  assert.equal(getForkProgressText(result), "… read src/index.ts\nfile contents so far");
+});
+
+test("captures child thinking progress metadata without storing thinking text", () => {
+  const result = makeResult();
+
+  assert.equal(
+    processPiEvent(
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "thinking_start" },
+      },
+      result,
+    ),
+    true,
+  );
+  assert.deepEqual(result.thinking, { status: "running", chars: 0 });
+  assert.equal(getForkProgressText(result), "… thinking...");
+
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "abc" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "defg" },
+    },
+    result,
+  );
+  assert.deepEqual(result.thinking, { status: "running", chars: 7 });
+  assert.equal(getForkProgressText(result), "… thinking 7 chars");
+
+  processPiEvent(
+    {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_end", content: "final thinking" },
+    },
+    result,
+  );
+  assert.deepEqual(result.thinking, { status: "completed", chars: 14 });
+  assert.equal(getForkProgressText(result), "→ thinking 14 chars");
+});
+
+test("strips raw thinking blocks from stored assistant messages", () => {
+  const result = makeResult();
+  const message = {
+    role: "assistant",
+    content: [
+      { type: "thinking", thinking: "private chain of thought" },
+      { type: "text", text: "Public answer" },
+    ],
+    thinking: "top-level private thinking",
+    reasoning_content: "provider private reasoning",
+    timestamp: 1,
+  };
+
+  processPiEvent({ type: "message_end", message }, result);
+  processPiEvent({ type: "agent_end", messages: [message] }, result);
+
+  assert.equal(result.messages.length, 1);
+  assert.equal(getFinalAssistantText(result.messages), "Public answer");
+  const serialized = JSON.stringify(result.messages);
+  assert.doesNotMatch(serialized, /private chain of thought/);
+  assert.doesNotMatch(serialized, /top-level private thinking/);
+  assert.doesNotMatch(serialized, /provider private reasoning/);
+  assert.deepEqual(result.messages[0].content, [{ type: "text", text: "Public answer" }]);
+});
+
+test("fork progress prefixes activity rows with the child tool name", () => {
+  const result = makeResult();
+
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_1",
+      toolName: "bash",
+      args: { command: "npm test" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_end",
+      toolCallId: "call_1",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "pass" }] },
+      isError: false,
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_start",
+      toolCallId: "call_2",
+      toolName: "fork",
+      args: { task: "inspect the renderer" },
+    },
+    result,
+  );
+  processPiEvent(
+    {
+      type: "tool_execution_end",
+      toolCallId: "call_2",
+      toolName: "fork",
+      result: { content: [{ type: "text", text: "done" }] },
+      isError: false,
+    },
+    result,
+  );
+
+  assert.equal(getForkProgressText(result), "→ bash $ npm test\n→ fork inspect the renderer\ndone");
 });
 
 test("fork progress prefers final assistant output over tool progress", () => {
@@ -167,7 +281,7 @@ test("bounds stored child tool execution history", () => {
   assert.equal(result.toolExecutions.length, 25);
   assert.equal(result.toolExecutions[0].toolCallId, "call_5");
   assert.equal(result.toolExecutions.at(-1).toolCallId, "call_29");
-  assert.match(getForkProgressText(result), /\.\.\. 20 earlier tool calls\n→ read src\/20\.ts/);
+  assert.match(getForkProgressText(result), /\.\.\. 20 earlier tool calls\n… read src\/20\.ts/);
 });
 
 test("invalid JSON lines are ignored", () => {

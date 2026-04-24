@@ -26,6 +26,11 @@ export interface ForkToolExecution {
   isError?: boolean;
 }
 
+export interface ForkThinkingState {
+  status: "running" | "completed";
+  chars: number;
+}
+
 export interface ForkResult {
   task: string;
   exitCode: number;
@@ -36,6 +41,7 @@ export interface ForkResult {
   stopReason?: string;
   errorMessage?: string;
   sawAgentEnd?: boolean;
+  thinking?: ForkThinkingState;
   toolExecutionCount?: number;
   toolExecutions?: ForkToolExecution[];
 }

@@ -46,6 +46,21 @@ function truncateTail(text, maxChars) {
   return `… truncated …\n${text.slice(text.length - maxChars)}`;
 }
 
+function truncateInline(text, maxChars) {
+  if (typeof text !== "string") return "";
+  const singleLine = text.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxChars) return singleLine;
+  return `${singleLine.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+function formatCount(n) {
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  if (n < 1000) return String(n);
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
+  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
 function stringifyPreview(value, maxChars) {
   if (value === undefined) return "";
   if (typeof value === "string") return truncateMiddle(value, maxChars);
@@ -68,7 +83,7 @@ function formatToolCallPreview(toolName, args) {
   switch (toolName) {
     case "bash": {
       const command = typeof args.command === "string" ? args.command : "...";
-      return `$ ${truncateMiddle(command, 80)}`;
+      return `bash $ ${truncateInline(command, 80)}`;
     }
     case "read": {
       const filePath = shortPath(args.path || args.file_path);
@@ -84,11 +99,15 @@ function formatToolCallPreview(toolName, args) {
     case "ls":
       return `ls ${shortPath(args.path || ".")}`;
     case "find":
-      return `find ${stringifyPreview(args.pattern || "*", 60)} in ${shortPath(args.path || ".")}`;
+      return `find ${truncateInline(stringifyPreview(args.pattern || "*", 60), 60)} in ${shortPath(args.path || ".")}`;
     case "grep":
-      return `grep ${stringifyPreview(args.pattern || "", 60)} in ${shortPath(args.path || ".")}`;
+      return `grep ${truncateInline(stringifyPreview(args.pattern || "", 60), 60)} in ${shortPath(args.path || ".")}`;
+    case "fork": {
+      const task = typeof args.task === "string" ? args.task : stringifyPreview(args, 80);
+      return `fork ${truncateInline(task, 80)}`;
+    }
     default: {
-      const argsPreview = stringifyPreview(args, 70);
+      const argsPreview = truncateInline(stringifyPreview(args, 70), 70);
       return argsPreview ? `${toolName} ${argsPreview}` : toolName || "tool";
     }
   }
@@ -134,17 +153,40 @@ function updateAssistantMetadata(result, message) {
   if (message.errorMessage) result.errorMessage = message.errorMessage;
 }
 
+function sanitizeAssistantMessage(message) {
+  const sanitized = { ...message };
+  delete sanitized.thinking;
+  delete sanitized.reasoning;
+  delete sanitized.reasoning_content;
+
+  if (Array.isArray(message.content)) {
+    sanitized.content = message.content
+      .filter((part) => part?.type !== "thinking")
+      .map((part) => {
+        if (!part || typeof part !== "object") return part;
+        const cleanPart = { ...part };
+        delete cleanPart.thinking;
+        delete cleanPart.reasoning;
+        delete cleanPart.reasoning_content;
+        return cleanPart;
+      });
+  }
+
+  return sanitized;
+}
+
 function addAssistantMessage(result, message) {
   if (!message || message.role !== "assistant") return false;
 
-  updateAssistantMetadata(result, message);
+  const sanitizedMessage = sanitizeAssistantMessage(message);
+  updateAssistantMetadata(result, sanitizedMessage);
 
-  const signature = stableStringify(message);
+  const signature = stableStringify(sanitizedMessage);
   const seen = getSeenMessageSignatures(result);
   if (seen.has(signature)) return false;
   seen.add(signature);
 
-  result.messages.push(message);
+  result.messages.push(sanitizedMessage);
 
   result.usage.turns++;
   const usage = message.usage;
@@ -242,10 +284,55 @@ function processToolExecutionEvent(event, result) {
   }
 }
 
+function ensureThinking(result) {
+  if (!result.thinking || typeof result.thinking !== "object") {
+    result.thinking = { status: "running", chars: 0 };
+  }
+  if (typeof result.thinking.chars !== "number") result.thinking.chars = 0;
+  return result.thinking;
+}
+
+function processMessageUpdateEvent(event, result) {
+  const assistantEvent = event.assistantMessageEvent;
+  if (!assistantEvent || typeof assistantEvent !== "object") return false;
+
+  switch (assistantEvent.type) {
+    case "thinking_start": {
+      const thinking = ensureThinking(result);
+      thinking.status = "running";
+      return true;
+    }
+
+    case "thinking_delta": {
+      const thinking = ensureThinking(result);
+      thinking.status = "running";
+      if (typeof assistantEvent.delta === "string") {
+        thinking.chars += assistantEvent.delta.length;
+      }
+      return true;
+    }
+
+    case "thinking_end": {
+      const thinking = ensureThinking(result);
+      thinking.status = "completed";
+      if (typeof assistantEvent.content === "string") {
+        thinking.chars = assistantEvent.content.length;
+      }
+      return true;
+    }
+
+    default:
+      return false;
+  }
+}
+
 export function processPiEvent(event, result) {
   if (!event || typeof event !== "object") return false;
 
   switch (event.type) {
+    case "message_update":
+      return processMessageUpdateEvent(event, result);
+
     case "message_end":
       return addAssistantMessage(result, event.message);
 
@@ -310,20 +397,32 @@ function getLatestRelevantToolExecution(result) {
 }
 
 function formatToolStatusIcon(tool) {
-  if (tool?.status === "error") return "✗";
+  if (tool?.status === "running") return "…";
+  if (tool?.status === "error") return "×";
   return "→";
+}
+
+function formatThinkingProgress(result) {
+  const thinking = result?.thinking;
+  if (!thinking || typeof thinking !== "object") return "";
+  const icon = thinking.status === "running" ? "…" : "→";
+  const chars = typeof thinking.chars === "number" ? thinking.chars : 0;
+  const label = chars > 0 ? `thinking ${formatCount(chars)} chars` : "thinking...";
+  return `${icon} ${label}`;
 }
 
 function formatToolProgress(result) {
   const toolExecutions = Array.isArray(result?.toolExecutions) ? result.toolExecutions : [];
-  if (toolExecutions.length === 0) return "";
+  const lines = [];
+  const thinkingProgress = formatThinkingProgress(result);
+  if (thinkingProgress) lines.push(thinkingProgress);
+  if (toolExecutions.length === 0) return lines.join("\n").trim();
 
   const toShow = toolExecutions.slice(-10);
   const totalTools = typeof result?.toolExecutionCount === "number"
     ? Math.max(result.toolExecutionCount, toolExecutions.length)
     : toolExecutions.length;
   const skipped = Math.max(0, totalTools - toShow.length);
-  const lines = [];
   if (skipped > 0) lines.push(`... ${skipped} earlier tool call${skipped === 1 ? "" : "s"}`);
   for (const tool of toShow) {
     lines.push(`${formatToolStatusIcon(tool)} ${tool.displayText || tool.toolName || "tool"}`);
