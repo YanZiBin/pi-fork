@@ -34,6 +34,8 @@ test("captures final assistant output from agent_end after non-zero tool exit", 
     model: "test-model",
     stopReason: "error",
     errorMessage: "Command exited with code 1",
+    provider: "openai",
+    model: "gpt-5.5",
     usage: {
       input: 1,
       output: 2,
@@ -49,6 +51,8 @@ test("captures final assistant output from agent_end after non-zero tool exit", 
   result.exitCode = 1;
 
   assert.equal(result.sawAgentEnd, true);
+  assert.equal(result.provider, "openai");
+  assert.equal(result.model, "gpt-5.5");
   assert.equal(result.stopReason, "error");
   assert.equal(result.errorMessage, "Command exited with code 1");
   assert.equal(result.usage.turns, 1);

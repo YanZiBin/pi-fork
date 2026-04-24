@@ -37,6 +37,7 @@ export interface ForkResult {
   messages: Message[];
   stderr: string;
   usage: UsageStats;
+  provider?: string;
   model?: string;
   stopReason?: string;
   errorMessage?: string;

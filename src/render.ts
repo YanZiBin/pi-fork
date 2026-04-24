@@ -38,6 +38,13 @@ function fmtCount(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
+function fmtModelProvider(result: ForkResult): string {
+  const provider = result.provider?.trim();
+  const model = result.model?.trim();
+  if (provider && model) return model.startsWith(`${provider}/`) ? model : `${provider}/${model}`;
+  return model || provider || "";
+}
+
 function fmtUsage(result: ForkResult): string {
   const usage = result.usage;
   if (!usage) return "";
@@ -49,7 +56,8 @@ function fmtUsage(result: ForkResult): string {
   if (usage.cacheRead) parts.push(`R${fmtCount(usage.cacheRead)}`);
   if (usage.cacheWrite) parts.push(`W${fmtCount(usage.cacheWrite)}`);
   if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
-  if (result.model) parts.push(result.model);
+  const modelProvider = fmtModelProvider(result);
+  if (modelProvider) parts.push(modelProvider);
   return parts.join(" ");
 }
 
@@ -77,6 +85,12 @@ function forkIcon(result: ForkResult, fg: (color: any, text: string) => string):
   if (status === "running") return fg("warning", "…");
   if (status === "error") return fg("error", "×");
   return fg("success", "✓");
+}
+
+function statusLabel(status: "running" | "success" | "error"): string {
+  if (status === "running") return "running";
+  if (status === "success") return "completed";
+  return "failed";
 }
 
 function toolIcon(tool: any, fg: (color: any, text: string) => string): string {
@@ -177,7 +191,7 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
 
   if (expanded) {
     const container = new Container();
-    let header = `${icon} ${fg("toolTitle", theme.bold("fork"))}`;
+    let header = `${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
     if (status !== "success" && result.stopReason) {
       header += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
     }
@@ -208,11 +222,10 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
     return container;
   }
 
-  let text = `${icon} ${fg("toolTitle", theme.bold("fork"))}`;
+  let text = `${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
   if (status !== "success" && result.stopReason) {
     text += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
   }
-  text += ` ${fg("dim", taskPreview(result.task))}`;
 
   if (toolsText) {
     text += `\n${toolsText}`;
