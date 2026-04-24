@@ -24,7 +24,7 @@ import {
 const ForkParams = Type.Object({
   task: Type.String({
     description:
-      "Task for the forked child Pi process. The child inherits the current active session branch as context.",
+      "Give the forked worker a focused, self-contained task. The worker starts from your current session branch context and returns its findings to you.",
   }),
 });
 
@@ -66,7 +66,7 @@ export default function (pi: ExtensionAPI) {
     name: "fork",
     label: "Fork",
     description:
-      "Run one task in an isolated child Pi process. The child inherits the current active session branch as context, receives the task as the final user message, and cannot call fork recursively.",
+      "Delegate a focused task to a worker that is forked from your current session branch context. The worker receives only the task you provide as its new instruction and reports its result back to you.",
     parameters: ForkParams,
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
