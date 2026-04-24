@@ -268,7 +268,7 @@ export function renderForkResult(toolResult: any, { expanded }: { expanded: bool
     return container;
   }
 
-  let text = `\n${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
+  let text = `${icon} ${fg("toolTitle", theme.bold(statusLabel(status)))}`;
   if (status !== "success" && result.stopReason) {
     text += ` ${fg(status === "error" ? "error" : "warning", `[${result.stopReason}]`)}`;
   }
