@@ -2,6 +2,19 @@
 
 Cache-friendly fork tool for Pi.
 
+## Installation
+
+Install the extension with Pi:
+
+```bash
+pi install git:github.com/elpapi42/pi-fork
+```
+
+After installation, start or restart Pi. The extension registers the `fork` tool
+for use in your Pi sessions.
+
+## Usage
+
 `pi-fork` provides one tool:
 
 ```json
