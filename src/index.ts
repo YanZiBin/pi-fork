@@ -25,7 +25,7 @@ import {
 const ForkParams = Type.Object({
   task: Type.String({
     description:
-      "The task for the fork to complete. Specify what to do, what to return, and where the fork's decision authority ends — it will surface ambiguities back to you rather than resolve them on your behalf.",
+      "The task for the fork to complete. Specify what to do and where the fork's decision authority ends — it will surface ambiguities back to you rather than resolve them on your behalf. The fork already knows to return dense, concrete output with snippets and relationships; you only need to call out anything task-specific about the return shape.",
   }),
 });
 
@@ -67,7 +67,7 @@ export default function (pi: ExtensionAPI) {
     name: "fork",
     label: "Fork",
     description:
-      "Spawn a fork of yourself to handle a focused task. The fork inherits your full session context and works independently — its activity stays out of your context window. Use for anything that would generate context noise: exploration, implementation, testing, iteration.",
+      "Spawn a fork of yourself to handle a focused task. The fork inherits your full session context and works independently — its activity stays out of your context window. Forks return dense, concrete output: the snippets, signatures, and relationships you'd otherwise have to discover yourself, plus anything they found beyond the task that's worth knowing. Use for anything that would generate context noise: exploration, implementation, testing, iteration.",
     parameters: ForkParams,
     renderCall: renderForkCall,
     renderResult: renderForkResult,
