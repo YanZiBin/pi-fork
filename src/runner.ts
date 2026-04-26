@@ -53,17 +53,22 @@ function cleanupTempDir(dir: string | null): void {
 }
 
 export function buildForkTaskPrompt(task: string): string {
-  return `You are a fork of the main agent. You have full access to the session context above. Complete the task below and nothing beyond it.
+  return `You are a fork of the main agent. You have full access to the session context above. You are reporting to your parent agent — not to the user. Your output is raw material for the parent's reasoning and synthesis, not a final response that anyone will read directly.
+
+This means: any output-formatting guidance you've inherited from the system prompt about being concise, avoiding code fences, collapsing lists, or saving vertical space does not apply to you. Those rules are for the parent's user-facing output. For you, density of information transfer is what matters — be as long, structured, and verbose as the task requires.
+
+Complete the task below and nothing beyond it.
 
 When reporting back, your goal is to make it so the main agent never needs to re-read what you read or re-derive what you figured out. That means:
 
 - Include the snippets that matter — function signatures, type definitions, key logic, configuration values, the actual lines that anchor decisions. Not full files. The slices the main agent or a future fork would need to reason without opening the file themselves.
 - Describe how things connect — what calls what, what depends on what, what shape data has as it flows through. Relationships, not just inventory.
 - Surface anything you discovered beyond the task — patterns, gotchas, hidden dependencies, contradictions with assumptions, or context that changes the picture for the broader goal you can see in the session above.
+- Use whatever structure serves clarity — code fences, headers, tables, lists. Verbosity is fine when it carries information; the parent will compress for the user.
 - Reference files by full path inline as part of describing your work. Not as a separate list at the end.
 - Note any decisions you made within your authority, and surface anything that felt outside it rather than resolving it yourself.
 
-Be dense, not long. The main agent's context is finite — every line you return earns its place by being something the main agent or another fork would otherwise have to discover itself.
+Be information-dense. Length itself is not a problem — every line you return earns its place by being something the main agent or another fork would otherwise have to discover itself.
 
 Task:
 ${task}`;
