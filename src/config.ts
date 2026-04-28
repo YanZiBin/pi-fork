@@ -11,12 +11,16 @@ export interface ForkConfig {
    * - non-empty: load only these extension sources
    */
   extensions: string[] | null;
+
+  /** Show fork cost as an extra footer status line. */
+  costFooter: boolean;
 }
 
 const SETTINGS_KEY = "pi-fork";
 
 export const DEFAULT_CONFIG: ForkConfig = {
   extensions: null,
+  costFooter: true,
 };
 
 function isPackageSource(value: string): boolean {
@@ -56,7 +60,10 @@ function readNamespacedConfig(settingsPath: string, baseDir: string): Partial<Fo
 
     const config = nested as Record<string, unknown>;
     const extensions = parseExtensions(config.extensions, baseDir);
-    return extensions === undefined ? {} : { extensions };
+    const parsed: Partial<ForkConfig> = {};
+    if (extensions !== undefined) parsed.extensions = extensions;
+    if (typeof config.costFooter === "boolean") parsed.costFooter = config.costFooter;
+    return parsed;
   } catch {
     return {};
   }

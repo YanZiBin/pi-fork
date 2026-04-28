@@ -66,6 +66,7 @@ test("loadConfig reads pi-fork.extensions and resolves local paths relative to s
         "npm:project-extension",
         path.join(projectSettingsDir, "project-local"),
       ],
+      costFooter: true,
     });
   } finally {
     if (previous === undefined) delete process.env.PI_FORK_TEST_AGENT_DIR;
@@ -106,7 +107,7 @@ test("loadConfig treats null extensions as normal Pi extension loading", async (
 
   try {
     const { loadConfig } = await import(`${moduleUrl}?t=${Date.now()}-null`);
-    assert.deepEqual(loadConfig(projectDir), { extensions: null });
+    assert.deepEqual(loadConfig(projectDir), { extensions: null, costFooter: true });
   } finally {
     if (previous === undefined) delete process.env.PI_FORK_TEST_AGENT_DIR;
     else process.env.PI_FORK_TEST_AGENT_DIR = previous;
@@ -136,7 +137,39 @@ test("loadConfig preserves empty extensions array as no child extensions", async
 
   try {
     const { loadConfig } = await import(`${moduleUrl}?t=${Date.now()}-empty`);
-    assert.deepEqual(loadConfig(projectDir), { extensions: [] });
+    assert.deepEqual(loadConfig(projectDir), { extensions: [], costFooter: true });
+  } finally {
+    if (previous === undefined) delete process.env.PI_FORK_TEST_AGENT_DIR;
+    else process.env.PI_FORK_TEST_AGENT_DIR = previous;
+    cleanup();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig allows disabling cost footer", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fork-config-fixture-"));
+  const agentDir = path.join(tmpDir, "agent");
+  const projectDir = path.join(tmpDir, "project");
+  const projectSettingsDir = path.join(projectDir, ".pi");
+  const { moduleUrl, cleanup } = createTestableConfigModule();
+
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(projectSettingsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectSettingsDir, "settings.json"),
+    JSON.stringify({
+      "pi-fork": {
+        costFooter: false,
+      },
+    }),
+  );
+
+  const previous = process.env.PI_FORK_TEST_AGENT_DIR;
+  process.env.PI_FORK_TEST_AGENT_DIR = agentDir;
+
+  try {
+    const { loadConfig } = await import(`${moduleUrl}?t=${Date.now()}-cost-footer`);
+    assert.deepEqual(loadConfig(projectDir), { extensions: null, costFooter: false });
   } finally {
     if (previous === undefined) delete process.env.PI_FORK_TEST_AGENT_DIR;
     else process.env.PI_FORK_TEST_AGENT_DIR = previous;

@@ -20,6 +20,18 @@ function getSeenMessageSignatures(result) {
   return result.__seenMessageSignatures;
 }
 
+function getSeenForkToolResultSignatures(result) {
+  if (!Object.prototype.hasOwnProperty.call(result, "__seenForkToolResultSignatures")) {
+    Object.defineProperty(result, "__seenForkToolResultSignatures", {
+      value: new Set(),
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
+  return result.__seenForkToolResultSignatures;
+}
+
 function stableStringify(value) {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
@@ -205,11 +217,62 @@ function addAssistantMessage(result, message) {
   return true;
 }
 
-function addAssistantMessages(result, messages) {
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function addNestedForkUsage(result, message) {
+  if (!message || message.role !== "toolResult" || message.toolName !== "fork") return false;
+
+  const results = message.details?.results;
+  if (!Array.isArray(results)) return false;
+
+  const signature = typeof message.toolCallId === "string" && message.toolCallId
+    ? `toolCallId:${message.toolCallId}`
+    : stableStringify({ toolName: message.toolName, details: message.details });
+  const seen = getSeenForkToolResultSignatures(result);
+  if (seen.has(signature)) return false;
+
+  let changed = false;
+  for (const forkResult of results) {
+    const usage = forkResult?.usage;
+    if (!usage || typeof usage !== "object") continue;
+
+    const input = finiteNumber(usage.input);
+    const output = finiteNumber(usage.output);
+    const cacheRead = finiteNumber(usage.cacheRead);
+    const cacheWrite = finiteNumber(usage.cacheWrite);
+    const cost = typeof usage.cost === "object" && usage.cost !== null
+      ? finiteNumber(usage.cost.total)
+      : finiteNumber(usage.cost);
+    const turns = finiteNumber(usage.turns);
+    const contextTokens = finiteNumber(usage.contextTokens) || finiteNumber(usage.totalTokens);
+
+    if (!(input || output || cacheRead || cacheWrite || cost || turns || contextTokens)) continue;
+
+    result.usage.input += input;
+    result.usage.output += output;
+    result.usage.cacheRead += cacheRead;
+    result.usage.cacheWrite += cacheWrite;
+    result.usage.cost += cost;
+    result.usage.turns += turns;
+    result.usage.contextTokens = Math.max(result.usage.contextTokens || 0, contextTokens);
+    changed = true;
+  }
+
+  if (changed) seen.add(signature);
+  return changed;
+}
+
+function addMessageUsage(result, message) {
+  return addAssistantMessage(result, message) || addNestedForkUsage(result, message);
+}
+
+function addMessagesUsage(result, messages) {
   if (!Array.isArray(messages)) return false;
   let changed = false;
   for (const message of messages) {
-    if (addAssistantMessage(result, message)) changed = true;
+    if (addMessageUsage(result, message)) changed = true;
   }
   return changed;
 }
@@ -439,14 +502,18 @@ export function processPiEvent(event, result) {
       return processMessageUpdateEvent(event, result);
 
     case "message_end":
-      return addAssistantMessage(result, event.message);
+      return addMessageUsage(result, event.message);
 
-    case "turn_end":
-      return addAssistantMessage(result, event.message);
+    case "turn_end": {
+      let changed = false;
+      if (addMessageUsage(result, event.message)) changed = true;
+      if (addMessagesUsage(result, event.toolResults)) changed = true;
+      return changed;
+    }
 
     case "agent_end":
       result.sawAgentEnd = true;
-      return addAssistantMessages(result, event.messages);
+      return addMessagesUsage(result, event.messages);
 
     case "tool_execution_start":
     case "tool_execution_update":

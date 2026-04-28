@@ -9,8 +9,9 @@
  * and the requested task. It does not modify the system prompt.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { aggregateInclusiveCost, formatForkCostStatus } from "./cost.js";
 import { loadConfig } from "./config.js";
 import { renderForkCall, renderForkResult } from "./render.js";
 import { runFork } from "./runner.js";
@@ -62,7 +63,35 @@ function emptyFailedResult(task: string, message: string): ForkResult {
   };
 }
 
+const FORK_COST_STATUS_KEY = "fork-cost";
+
+function updateForkCostStatus(ctx: ExtensionContext): void {
+  if (!loadConfig(ctx.cwd).costFooter) {
+    ctx.ui.setStatus(FORK_COST_STATUS_KEY, undefined);
+    return;
+  }
+
+  const stats = aggregateInclusiveCost(ctx.sessionManager.getEntries());
+  ctx.ui.setStatus(FORK_COST_STATUS_KEY, formatForkCostStatus(stats));
+}
+
 export default function (pi: ExtensionAPI) {
+  pi.on("session_start", async (_event, ctx) => {
+    updateForkCostStatus(ctx);
+  });
+
+  pi.on("turn_end", async (_event, ctx) => {
+    updateForkCostStatus(ctx);
+  });
+
+  pi.on("session_tree", async (_event, ctx) => {
+    updateForkCostStatus(ctx);
+  });
+
+  pi.on("session_shutdown", async (_event, ctx) => {
+    ctx.ui.setStatus(FORK_COST_STATUS_KEY, undefined);
+  });
+
   pi.registerTool({
     name: "fork",
     label: "Fork",

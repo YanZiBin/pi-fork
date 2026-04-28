@@ -85,6 +85,25 @@ Local extension paths are resolved relative to the settings file directory:
 If `pi-fork` itself is listed in `pi-fork.extensions`, child processes will load
 the `fork` tool too.
 
+## Fork Cost Footer
+
+By default, `pi-fork` adds an extra footer status line with fork cost:
+
+```text
+forks +$0.123
+```
+
+The fork cost comes from completed fork tool results, including forks spawned by
+forks. Disable the extra footer line with:
+
+```json
+{
+  "pi-fork": {
+    "costFooter": false
+  }
+}
+```
+
 ## Manual Check
 
 From this directory:

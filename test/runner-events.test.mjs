@@ -522,3 +522,100 @@ test("invalid JSON lines are ignored", () => {
   assert.equal(processPiJsonLine("{ nope", result), false);
   assert.equal(result.messages.length, 0);
 });
+
+test("rolls nested fork tool-result usage into parent fork usage", () => {
+  const result = makeResult();
+  const nestedForkToolResult = {
+    role: "toolResult",
+    toolName: "fork",
+    toolCallId: "nested-fork-1",
+    details: {
+      results: [
+        {
+          usage: {
+            input: 100,
+            output: 20,
+            cacheRead: 30,
+            cacheWrite: 40,
+            contextTokens: 500,
+            turns: 2,
+            cost: 0.1234,
+          },
+        },
+      ],
+    },
+  };
+
+  assert.equal(processPiEvent({ type: "message_end", message: nestedForkToolResult }, result), true);
+
+  assert.equal(result.usage.input, 100);
+  assert.equal(result.usage.output, 20);
+  assert.equal(result.usage.cacheRead, 30);
+  assert.equal(result.usage.cacheWrite, 40);
+  assert.equal(result.usage.contextTokens, 500);
+  assert.equal(result.usage.turns, 2);
+  assert.equal(result.usage.cost, 0.1234);
+});
+
+test("deduplicates nested fork usage repeated across event types", () => {
+  const result = makeResult();
+  const nestedForkToolResult = {
+    role: "toolResult",
+    toolName: "fork",
+    toolCallId: "nested-fork-1",
+    details: {
+      results: [
+        {
+          usage: {
+            input: 100,
+            output: 20,
+            turns: 2,
+            cost: 0.1234,
+          },
+        },
+      ],
+    },
+  };
+
+  processPiEvent({ type: "message_end", message: nestedForkToolResult }, result);
+  processPiEvent({ type: "turn_end", message: nestedForkToolResult }, result);
+  processPiEvent({ type: "agent_end", messages: [nestedForkToolResult] }, result);
+
+  assert.equal(result.usage.input, 100);
+  assert.equal(result.usage.output, 20);
+  assert.equal(result.usage.turns, 2);
+  assert.equal(result.usage.cost, 0.1234);
+});
+
+test("captures nested fork usage from turn_end toolResults", () => {
+  const result = makeResult();
+  const assistant = {
+    role: "assistant",
+    content: [{ type: "text", text: "done" }],
+    usage: { input: 1, output: 1, cost: { total: 0.01 } },
+  };
+  const nestedForkToolResult = {
+    role: "toolResult",
+    toolName: "fork",
+    toolCallId: "nested-fork-turn-end",
+    details: {
+      results: [
+        {
+          usage: {
+            input: 50,
+            output: 10,
+            turns: 1,
+            cost: 0.05,
+          },
+        },
+      ],
+    },
+  };
+
+  processPiEvent({ type: "turn_end", message: assistant, toolResults: [nestedForkToolResult] }, result);
+
+  assert.equal(result.usage.input, 51);
+  assert.equal(result.usage.output, 11);
+  assert.equal(result.usage.turns, 2);
+  assert.equal(result.usage.cost, 0.060000000000000005);
+});
