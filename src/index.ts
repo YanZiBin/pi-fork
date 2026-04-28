@@ -72,7 +72,8 @@ function updateForkCostStatus(ctx: ExtensionContext): void {
   }
 
   const stats = aggregateInclusiveCost(ctx.sessionManager.getEntries());
-  ctx.ui.setStatus(FORK_COST_STATUS_KEY, formatForkCostStatus(stats));
+  const status = formatForkCostStatus(stats);
+  ctx.ui.setStatus(FORK_COST_STATUS_KEY, status ? ctx.ui.theme.fg("dim", status) : undefined);
 }
 
 export default function (pi: ExtensionAPI) {

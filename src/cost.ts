@@ -107,10 +107,7 @@ export function aggregateInclusiveCost(entries: unknown[]): InclusiveCostStats {
   return stats;
 }
 
-const ANSI_DIM = "\x1b[2m";
-const ANSI_DIM_RESET = "\x1b[22m";
-
 export function formatForkCostStatus(stats: InclusiveCostStats): string | undefined {
   if (stats.forks.cost <= 0) return undefined;
-  return `${ANSI_DIM}forks +$${stats.forks.cost.toFixed(3)}${ANSI_DIM_RESET}`;
+  return `forks +$${stats.forks.cost.toFixed(3)}`;
 }

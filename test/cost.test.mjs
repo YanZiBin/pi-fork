@@ -58,8 +58,7 @@ test("aggregateInclusiveCost sums assistant cost plus fork tool-result cost", ()
   assert.equal(stats.forkResults, 2);
   assert.equal(stats.total.cost.toFixed(4), "1.4570");
   assert.equal(stats.total.input, 115);
-  assert.equal(formatForkCostStatus(stats), "\x1b[2mforks +$0.346\x1b[22m");
-  assert.equal(formatForkCostStatus(stats)?.replace(/\x1b\[[0-9;]*m/g, ""), "forks +$0.346");
+  assert.equal(formatForkCostStatus(stats), "forks +$0.346");
 });
 
 test("formatForkCostStatus hides footer text when there is no fork cost", () => {
