@@ -87,7 +87,7 @@ the `fork` tool too.
 
 ## Fork Cost Footer
 
-By default, `pi-fork` adds an extra footer status line with fork cost:
+By default, `pi-fork` adds an extra dimmed footer status line with fork cost:
 
 ```text
 forks +$0.123
