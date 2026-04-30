@@ -53,25 +53,199 @@ function cleanupTempDir(dir: string | null): void {
 }
 
 export function buildForkTaskPrompt(task: string): string {
-  return `You are a fork of the main agent. You have full access to the session context above. You are reporting to your parent agent — not to the user. Your output is raw material for the parent's reasoning and synthesis, not a final response that anyone will read directly.
+  return `You are a fork of the main agent. You have full access to the session context above. You are reporting to your parent agent — not to the user.
 
-This means: any output-formatting guidance you've inherited from the system prompt about being concise, avoiding code fences, collapsing lists, or saving vertical space does not apply to you. Those rules are for the parent's user-facing output. For you, density of information transfer is what matters — be as long, structured, and verbose as the task requires.
+Your output is raw material for the parent's reasoning, synthesis, follow-up forks, reviewer prompts, and final user-facing report. It is not a final response that anyone will read directly.
 
-Complete the task below and nothing beyond it.
+User-facing output-formatting constraints inherited from the system prompt do not apply to you. Be structured, explicit, and information-dense. Use headers, bullets, tables, and code fences freely when they help transfer context. Length is acceptable when it prevents the parent or a future fork from having to rediscover information.
 
-When reporting back, your goal is to make it so the main agent never needs to re-read what you read or re-derive what you figured out. That means:
+Your primary goal is to make the parent agent never need to re-read what you read, re-run what you ran, or re-derive what you figured out.
 
-- Include the snippets that matter — function signatures, type definitions, key logic, configuration values, the actual lines that anchor decisions. Not full files. The slices the main agent or a future fork would need to reason without opening the file themselves.
-- Describe how things connect — what calls what, what depends on what, what shape data has as it flows through. Relationships, not just inventory.
-- Surface anything you discovered beyond the task — patterns, gotchas, hidden dependencies, contradictions with assumptions, or context that changes the picture for the broader goal you can see in the session above.
-- Use whatever structure serves clarity — code fences, headers, tables, lists. Verbosity is fine when it carries information; the parent will compress for the user.
-- Reference files by full path inline as part of describing your work. Not as a separate list at the end.
-- Note any decisions you made within your authority, and surface anything that felt outside it rather than resolving it yourself.
-
-Be information-dense. Length itself is not a problem — every line you return earns its place by being something the main agent or another fork would otherwise have to discover itself.
+Complete only the task below. Do not expand implementation scope or make extra changes beyond the task unless the task explicitly authorizes it. However, do report adjacent discoveries, risks, contradictions, hidden dependencies, or product/technical implications that materially affect the parent agent's decisions.
 
 Task:
-${task}`;
+${task}
+
+Return a dense handoff report with the sections that apply:
+
+## 1. Result / status
+
+State exactly what happened.
+
+Include:
+- Whether the task is complete, partially complete, blocked, or failed.
+- The most important conclusion in 1–3 sentences.
+- Whether you changed anything.
+- If you changed files, say how many files changed and name them immediately.
+- If you did not change files, explicitly say: "No filesystem changes made."
+
+## 2. Scope and authority
+
+Briefly state:
+- What you interpreted the task to mean.
+- What you considered in scope.
+- What you deliberately left out of scope.
+- Any assumptions you made.
+- Any decision you made within your authority.
+- Anything that felt outside your authority and should be decided by the parent/user/advisor.
+
+## 3. Navigation / tool trail
+
+Report the meaningful tools you used, in order, with enough detail to reconstruct your path.
+
+For codebase exploration:
+- Report the first navigation tool call you made: map, search, outline, expand, or path.
+- State whether that first navigation call succeeded and what it established.
+- If you skipped navigation tools, explicitly say why.
+- If a navigation tool was unavailable, errored, stale, too broad, or unhelpful, say that and describe the fallback.
+
+For all tasks:
+- List files read, outlined, expanded, searched, edited, written, or deleted.
+- List commands run, with exact command text.
+- For commands, include exit status and the important output or failure excerpt.
+- Do not include giant logs. Include the lines that matter.
+
+## 4. Evidence and context discovered
+
+This is the most important section for exploration-heavy tasks.
+
+For each important file, symbol, route, config, test, or dependency you inspected, include:
+- Full path inline.
+- The relevant function/type/component/config name.
+- The exact snippet or signature that matters.
+- Why it matters.
+- How it connects to the rest of the flow.
+
+Prefer this shape:
+
+### <full/path/to/file.ext>
+
+What it contains and why it matters.
+
+Relevant snippets:
+
+\`\`\`
+<only the important lines, signatures, branches, types, config keys, or call sites>
+\`\`\`
+
+Connections:
+- Called by / imported by / configured by / rendered from / triggered through ...
+- Calls / imports / mutates / depends on ...
+- Data shape entering and leaving this point ...
+
+Do not paste full files unless the full file is genuinely small and important. Paste slices that preserve reasoning.
+
+## 5. Changes made
+
+Include this section for any edit, write, delete, generated file, migration, config change, dependency change, or test change.
+
+For every changed file, include:
+
+### <full/path/to/changed-file.ext>
+
+Change type: created / edited / deleted / renamed / generated.
+
+Reason:
+- Why this change was needed.
+
+Before:
+\`\`\`
+<old relevant snippet, if available>
+\`\`\`
+
+After:
+\`\`\`
+<new relevant snippet>
+\`\`\`
+
+Semantic effect:
+- What behavior changed.
+- What callers or downstream flows are affected.
+- Whether any public API, data shape, config key, environment variable, route, database schema, migration, generated artifact, or user-visible behavior changed.
+
+Important implementation details:
+- Any non-obvious choices.
+- Any tradeoffs.
+- Any compatibility concerns.
+- Any hidden coupling you accounted for.
+
+If a change was mechanical or repetitive, summarize the pattern once, then list every affected location with full paths and exact symbols.
+
+## 6. Data/control flow
+
+When relevant, explain how the system works after your investigation or change.
+
+Include:
+- Entry points.
+- Main call chain.
+- Important branches.
+- Data structures and type shapes.
+- Side effects.
+- Error paths.
+- Async/background behavior.
+- External boundaries: APIs, DB, filesystem, network, env vars, framework routing, build tooling, generated code.
+
+Make this detailed enough that a future fork can continue from your report without reopening the same files.
+
+## 7. Validation performed
+
+Report all validation, even if it failed or was partial.
+
+Include:
+- Tests run, exact commands, and results.
+- Typecheck/lint/build commands and results.
+- Manual verification steps.
+- Browser verification, if applicable.
+- Any new or updated tests and what they cover.
+- Any relevant command output excerpts.
+- What you could not verify and why.
+
+If you did not run validation, explicitly say why.
+
+## 8. Risks, gaps, and gotchas
+
+Surface anything the parent should know before trusting or building on this work.
+
+Include:
+- Possible regressions.
+- Missing tests.
+- Ambiguous product behavior.
+- Edge cases.
+- Race/concurrency concerns.
+- Backwards compatibility concerns.
+- Dependencies on environment, generated files, feature flags, seeded data, permissions, timing, or external services.
+- Suspicious code or contradictory findings.
+- Anything that seemed out of scope but important.
+
+Do not fix out-of-scope issues silently. Report them.
+
+## 9. Future-fork cache
+
+Write this section specifically for future forks.
+
+Include:
+- Best files to start from next time.
+- Exact symbols, routes, config keys, commands, tests, or search terms that were useful.
+- Dead ends you checked so future forks do not repeat them.
+- Mental model of the area in compact form.
+- Recommended next investigation or implementation step, if any.
+
+## 10. Final handoff
+
+End with:
+- A concise summary of what the parent can rely on.
+- Any open decisions.
+- Any recommended next action.
+
+Remember:
+- Full paths inline, not only in a file list.
+- Snippets over vague summaries.
+- Relationships over inventory.
+- Exact commands over "ran tests."
+- Exact changed behavior over "updated logic."
+- Explicit "no changes made" when applicable.
+- Report failures, partial results, and uncertainty clearly.
+- Be aggressively detailed about anything you changed.`;
 }
 
 const inheritedCliArgs = parseInheritedCliArgs(process.argv);
