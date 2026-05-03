@@ -10,6 +10,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { buildChildEnv } from "./env.js";
 import { parseInheritedCliArgs } from "./runner-cli.js";
 import { getForkProgressText, processPiJsonLine } from "./runner-events.js";
 import {
@@ -22,7 +23,6 @@ import {
 const isWindows = process.platform === "win32";
 const SIGKILL_TIMEOUT_MS = 5000;
 const AGENT_END_GRACE_MS = 250;
-const PI_OFFLINE_ENV = "PI_OFFLINE";
 
 type OnUpdateCallback = (partial: AgentToolResult<ForkDetails>) => void;
 
@@ -297,6 +297,7 @@ export interface RunForkOptions {
   task: string;
   forkSessionSnapshotJsonl: string;
   extensions?: string[] | null;
+  environment?: Record<string, string>;
   signal?: AbortSignal;
   onUpdate?: OnUpdateCallback;
   makeDetails: (results: ForkResult[]) => ForkDetails;
@@ -308,6 +309,7 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
     task,
     forkSessionSnapshotJsonl,
     extensions = null,
+    environment = {},
     signal,
     onUpdate,
     makeDetails,
@@ -361,10 +363,7 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
         cwd,
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          [PI_OFFLINE_ENV]: "1",
-        },
+        env: buildChildEnv(environment),
       });
 
       proc.stdin.on("error", () => {

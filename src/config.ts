@@ -12,6 +12,9 @@ export interface ForkConfig {
    */
   extensions: string[] | null;
 
+  /** Environment variables to overlay onto child fork processes. */
+  environment: Record<string, string>;
+
   /** Show fork cost as an extra footer status line. */
   costFooter: boolean;
 }
@@ -20,6 +23,7 @@ const SETTINGS_KEY = "pi-fork";
 
 export const DEFAULT_CONFIG: ForkConfig = {
   extensions: null,
+  environment: {},
   costFooter: true,
 };
 
@@ -50,6 +54,73 @@ function parseExtensions(raw: unknown, baseDir: string): string[] | null | undef
   return extensions;
 }
 
+function defineEnvironmentValue(
+  target: Record<string, string>,
+  key: string,
+  value: string,
+): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function copyEnvironment(source: Record<string, string> | undefined): Record<string, string> {
+  const target: Record<string, string> = {};
+  if (!source) return target;
+
+  for (const [key, value] of Object.entries(source)) {
+    defineEnvironmentValue(target, key, value);
+  }
+  return target;
+}
+
+export function parseEnvironment(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+
+  const environment: Record<string, string> = {};
+  for (const [key, rawValue] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      !key ||
+      key.includes("=") ||
+      key.includes("\0") ||
+      typeof rawValue !== "string" ||
+      rawValue.includes("\0")
+    ) {
+      continue;
+    }
+    defineEnvironmentValue(environment, key, rawValue);
+  }
+  return environment;
+}
+
+export function mergeEnvironment(
+  base: Record<string, string> | undefined,
+  overrides: Record<string, string> | undefined,
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string> {
+  const environment = copyEnvironment(base);
+  if (!overrides) return environment;
+
+  if (platform === "win32") {
+    for (const [overrideKey, overrideValue] of Object.entries(overrides)) {
+      const normalizedKey = overrideKey.toLowerCase();
+      for (const key of Object.keys(environment)) {
+        if (key.toLowerCase() === normalizedKey) delete environment[key];
+      }
+      defineEnvironmentValue(environment, overrideKey, overrideValue);
+    }
+    return environment;
+  }
+
+  for (const [overrideKey, overrideValue] of Object.entries(overrides)) {
+    defineEnvironmentValue(environment, overrideKey, overrideValue);
+  }
+  return environment;
+}
+
 function readNamespacedConfig(settingsPath: string, baseDir: string): Partial<ForkConfig> {
   if (!existsSync(settingsPath)) return {};
 
@@ -60,8 +131,10 @@ function readNamespacedConfig(settingsPath: string, baseDir: string): Partial<Fo
 
     const config = nested as Record<string, unknown>;
     const extensions = parseExtensions(config.extensions, baseDir);
+    const environment = parseEnvironment(config.environment);
     const parsed: Partial<ForkConfig> = {};
     if (extensions !== undefined) parsed.extensions = extensions;
+    if (environment !== undefined) parsed.environment = environment;
     if (typeof config.costFooter === "boolean") parsed.costFooter = config.costFooter;
     return parsed;
   } catch {
@@ -74,10 +147,13 @@ export function loadConfig(cwd: string): ForkConfig {
   const globalPath = path.join(agentDir, "settings.json");
   const projectSettingsDir = path.join(cwd, ".pi");
   const projectPath = path.join(projectSettingsDir, "settings.json");
+  const globalConfig = readNamespacedConfig(globalPath, agentDir);
+  const projectConfig = readNamespacedConfig(projectPath, projectSettingsDir);
 
   return {
     ...DEFAULT_CONFIG,
-    ...readNamespacedConfig(globalPath, agentDir),
-    ...readNamespacedConfig(projectPath, projectSettingsDir),
+    ...globalConfig,
+    ...projectConfig,
+    environment: mergeEnvironment(globalConfig.environment, projectConfig.environment),
   };
 }

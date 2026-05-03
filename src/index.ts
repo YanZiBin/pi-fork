@@ -116,11 +116,13 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
+      const config = loadConfig(ctx.cwd);
       const result = await runFork({
         cwd: ctx.cwd,
         task: params.task,
         forkSessionSnapshotJsonl: snapshot,
-        extensions: loadConfig(ctx.cwd).extensions,
+        extensions: config.extensions,
+        environment: config.environment,
         signal,
         onUpdate,
         makeDetails,

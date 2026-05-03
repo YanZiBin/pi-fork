@@ -1,6 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { buildChildEnv } from "../src/env.ts";
 import { isResultError, isResultSuccess, normalizeCompletedResult } from "../src/types.ts";
+
+function envObject(entries) {
+  const env = {};
+  for (const [key, value] of entries) {
+    Object.defineProperty(env, key, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return env;
+}
 
 function makeResult(overrides = {}) {
   return {
@@ -60,4 +74,87 @@ test("normalizeCompletedResult keeps aborts as errors without semantic completio
   assert.equal(result.stderr, "Fork was aborted.");
   assert.equal(isResultSuccess(result), false);
   assert.equal(isResultError(result), true);
+});
+
+test("buildChildEnv overlays configured values onto inherited env", () => {
+  const parentEnv = {
+    INHERITED: "parent",
+    OVERRIDE: "parent",
+  };
+
+  assert.deepEqual(
+    buildChildEnv({ OVERRIDE: "configured", EMPTY: "" }, parentEnv, "linux"),
+    {
+      INHERITED: "parent",
+      OVERRIDE: "configured",
+      EMPTY: "",
+      PI_OFFLINE: "1",
+    },
+  );
+  assert.deepEqual(parentEnv, {
+    INHERITED: "parent",
+    OVERRIDE: "parent",
+  });
+});
+
+test("buildChildEnv preserves PI_OFFLINE invariant after configured env", () => {
+  assert.deepEqual(
+    buildChildEnv(
+      {
+        PI_OFFLINE: "0",
+        OTHER: "configured",
+      },
+      {
+        PI_OFFLINE: "parent",
+      },
+      "linux",
+    ),
+    {
+      PI_OFFLINE: "1",
+      OTHER: "configured",
+    },
+  );
+});
+
+test("buildChildEnv applies Windows overrides case-insensitively", () => {
+  assert.deepEqual(
+    buildChildEnv(
+      {
+        path: "configured-path",
+        pi_offline: "0",
+      },
+      {
+        PATH: "parent-path",
+        Pi_Offline: "parent-offline",
+        KEEP: "parent",
+      },
+      "win32",
+    ),
+    {
+      path: "configured-path",
+      KEEP: "parent",
+      PI_OFFLINE: "1",
+    },
+  );
+});
+
+test("buildChildEnv preserves __proto__ as an own env variable", () => {
+  const childEnv = buildChildEnv(
+    envObject([["__proto__", "configured-proto"]]),
+    envObject([
+      ["__proto__", "parent-proto"],
+      ["KEEP", "parent"],
+    ]),
+    "win32",
+  );
+
+  assert.deepEqual(
+    childEnv,
+    envObject([
+      ["KEEP", "parent"],
+      ["__proto__", "configured-proto"],
+      ["PI_OFFLINE", "1"],
+    ]),
+  );
+  assert.equal(Object.getOwnPropertyDescriptor(childEnv, "__proto__")?.value, "configured-proto");
 });

@@ -85,6 +85,37 @@ Local extension paths are resolved relative to the settings file directory:
 If `pi-fork` itself is listed in `pi-fork.extensions`, child processes will load
 the `fork` tool too.
 
+## Fork Environment
+
+Add optional environment variables under `pi-fork.environment` in
+`~/.pi/agent/settings.json` or `.pi/settings.json`:
+
+```json
+{
+  "pi-fork": {
+    "environment": {
+      "MY_EXTENSION_MODE": "fork",
+      "SERVICE_BASE_URL": "https://example.test"
+    }
+  }
+}
+```
+
+Fork children still inherit the parent Pi process environment. The resolved
+`environment` map is overlaid on top, so configured variables add or override
+child env vars while omitted variables continue to inherit normally. Project
+settings override global settings; on Windows, that override is case-insensitive.
+`PI_OFFLINE` is always forced to `"1"` for fork children and cannot be
+overridden by `pi-fork.environment`.
+
+Invalid entries are ignored: non-string values, empty variable names, names
+containing `=`, and keys or values containing null bytes. Empty string values are
+allowed.
+
+This does not change the parent agent environment, add per-call env config,
+isolate children from inherited env, unset inherited variables, or provide secret
+masking/auditing.
+
 ## Fork Cost Footer
 
 By default, `pi-fork` adds an extra dimmed footer status line with fork cost:
