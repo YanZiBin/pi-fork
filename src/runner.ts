@@ -219,18 +219,48 @@ Include:
 
 Do not fix out-of-scope issues silently. Report them.
 
-## 9. Future-fork cache
+## 9. Reusable learnings
 
-Write this section specifically for future forks.
+Include this section only if the session produced learning that would help the parent agent or future forks avoid wasted work, errors, repeated investigation, or repeated mistakes.
+
+Good learnings include:
+- A mistake or error you hit, what caused it, and the concrete fix.
+- A dead end or misleading path you ruled out, with why.
+- A non-obvious repo/project fact discovered through evidence.
+- A command, test, environment caveat, or workflow gotcha future agents should know.
+- A tricky implementation constraint or edge case and how you handled it.
+- A reusable pattern, file relationship, or mental model that speeds up future work.
+
+Do not include:
+- Generic advice.
+- Obvious facts from the task itself.
+- Speculation without evidence.
+- Secrets, tokens, environment values, or sensitive data.
+- Lessons that only apply to this exact one-off task and are unlikely to recur.
+
+For each learning, use this compact shape:
+- Learning: <one sentence>
+  Evidence: <file, command, error, source, or exact observation>
+  Why it matters: <how this helps future parent/fork work>
+  Reuse trigger: <when a future agent should remember or apply it>
+
+## 10. Continuation context
+
+Write this section for the parent agent or future forks that may continue, verify, or build on this work.
 
 Include:
 - Best files to start from next time.
 - Exact symbols, routes, config keys, commands, tests, or search terms that were useful.
 - Dead ends you checked so future forks do not repeat them.
+- Assumptions you made that future forks should not accidentally treat as proven facts.
+- Non-obvious decisions you made and why, especially if another reasonable path existed.
+- Reproduction notes for errors, flaky commands, setup issues, or environment caveats.
+- Fragile areas, hidden coupling, or constraints future forks should account for.
 - Mental model of the area in compact form.
-- Recommended next investigation or implementation step, if any.
 
-## 10. Final handoff
+Use this as an operational cache, not a reflection diary. Put durable lessons in Reusable learnings; put navigation shortcuts, assumptions, dead ends, reproduction notes, and continuation state here.
+
+## 11. Final handoff
 
 End with:
 - A concise summary of what the parent can rely on.
@@ -245,7 +275,8 @@ Remember:
 - Exact changed behavior over "updated logic."
 - Explicit "no changes made" when applicable.
 - Report failures, partial results, and uncertainty clearly.
-- Be aggressively detailed about anything you changed.`;
+- Be aggressively detailed about anything you changed.
+- Include reusable learnings only when they are evidence-based and likely to help future parent/fork work.`;
 }
 
 const inheritedCliArgs = parseInheritedCliArgs(process.argv);
