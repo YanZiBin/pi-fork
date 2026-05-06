@@ -516,6 +516,131 @@ test("bounds stored child tool execution history", () => {
   assert.match(getForkProgressText(result), /\.\.\. 20 earlier activities\n… read src\/20\.ts/);
 });
 
+
+test("captures child auto-retry start and progress", () => {
+  const result = makeResult();
+  result.sawAgentEnd = true;
+
+  assert.equal(
+    processPiEvent(
+      {
+        type: "auto_retry_start",
+        attempt: 1,
+        maxAttempts: 3,
+        delayMs: 2000,
+        errorMessage: "WebSocket error",
+      },
+      result,
+    ),
+    true,
+  );
+
+  assert.equal(result.sawAgentEnd, false);
+  assert.deepEqual(result.retry, {
+    active: true,
+    pending: false,
+    success: undefined,
+    attempt: 1,
+    maxAttempts: 3,
+    delayMs: 2000,
+    errorMessage: "WebSocket error",
+    history: [
+      {
+        type: "start",
+        attempt: 1,
+        maxAttempts: 3,
+        delayMs: 2000,
+        errorMessage: "WebSocket error",
+      },
+    ],
+  });
+  assert.equal(getForkProgressText(result), "Retrying after WebSocket error (attempt 1/3, waiting 2s)");
+});
+
+test("captures child auto-retry success and failure end events", () => {
+  const successResult = makeResult();
+  processPiEvent({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "WebSocket error" }, successResult);
+  assert.equal(processPiEvent({ type: "auto_retry_end", success: true, attempt: 1 }, successResult), true);
+
+  assert.equal(successResult.retry.active, false);
+  assert.equal(successResult.retry.success, true);
+  assert.equal(successResult.retry.history.length, 2);
+  assert.deepEqual(successResult.retry.history.at(-1), {
+    type: "end",
+    attempt: 1,
+    success: true,
+    finalError: undefined,
+  });
+  assert.equal(successResult.stopReason, undefined);
+  assert.equal(successResult.errorMessage, undefined);
+
+  const failureResult = makeResult();
+  processPiEvent({ type: "auto_retry_start", attempt: 3, maxAttempts: 3, delayMs: 8000, errorMessage: "WebSocket closed 1000" }, failureResult);
+  assert.equal(
+    processPiEvent(
+      { type: "auto_retry_end", success: false, attempt: 3, finalError: "WebSocket closed 1000" },
+      failureResult,
+    ),
+    true,
+  );
+
+  assert.equal(failureResult.retry.active, false);
+  assert.equal(failureResult.retry.success, false);
+  assert.equal(failureResult.retry.finalError, "WebSocket closed 1000");
+  assert.equal(failureResult.stopReason, "error");
+  assert.equal(failureResult.errorMessage, "WebSocket closed 1000");
+});
+
+test("preserves exhausted retry error metadata after later non-error assistant message", () => {
+  const result = makeResult();
+  processPiEvent({ type: "auto_retry_start", attempt: 3, maxAttempts: 3, delayMs: 8000, errorMessage: "WebSocket error" }, result);
+  processPiEvent({ type: "auto_retry_end", success: false, attempt: 3, finalError: "WebSocket error" }, result);
+  processPiEvent(
+    {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        stopReason: "stop",
+        content: [{ type: "text", text: "Late non-error message." }],
+        timestamp: 2,
+      },
+    },
+    result,
+  );
+
+  assert.equal(result.stopReason, "error");
+  assert.equal(result.errorMessage, "WebSocket error");
+  assert.equal(result.retry.success, false);
+});
+
+test("clears stale terminal error metadata after successful retry assistant message", () => {
+  const result = makeResult();
+  const failed = {
+    role: "assistant",
+    stopReason: "error",
+    errorMessage: "WebSocket error",
+    content: [],
+    timestamp: 1,
+  };
+  const recovered = {
+    role: "assistant",
+    content: [{ type: "text", text: "Recovered after retry." }],
+    timestamp: 2,
+  };
+
+  processPiEvent({ type: "message_end", message: failed }, result);
+  processPiEvent({ type: "agent_end", messages: [failed] }, result);
+  processPiEvent({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "WebSocket error" }, result);
+  processPiEvent({ type: "message_end", message: recovered }, result);
+  processPiEvent({ type: "auto_retry_end", success: true, attempt: 1 }, result);
+  processPiEvent({ type: "agent_end", messages: [recovered] }, result);
+
+  assert.equal(getFinalAssistantText(result.messages), "Recovered after retry.");
+  assert.equal(result.stopReason, undefined);
+  assert.equal(result.errorMessage, undefined);
+  assert.equal(result.retry.history.length, 2);
+});
+
 test("invalid JSON lines are ignored", () => {
   const result = makeResult();
 

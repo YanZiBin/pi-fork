@@ -45,6 +45,28 @@ export interface ForkThinkingActivity extends ForkThinkingState {
 
 export type ForkActivity = ForkToolActivity | ForkThinkingActivity;
 
+export interface ForkRetryHistoryEntry {
+  type: "start" | "end";
+  attempt?: number;
+  maxAttempts?: number;
+  delayMs?: number;
+  errorMessage?: string;
+  success?: boolean;
+  finalError?: string;
+}
+
+export interface ForkRetryState {
+  active?: boolean;
+  pending?: boolean;
+  attempt?: number;
+  maxAttempts?: number;
+  delayMs?: number;
+  errorMessage?: string;
+  finalError?: string;
+  success?: boolean;
+  history?: ForkRetryHistoryEntry[];
+}
+
 export interface ForkResult {
   task: string;
   exitCode: number;
@@ -56,6 +78,7 @@ export interface ForkResult {
   stopReason?: string;
   errorMessage?: string;
   sawAgentEnd?: boolean;
+  retry?: ForkRetryState;
   thinking?: ForkThinkingState;
   activityCount?: number;
   activities?: ForkActivity[];
@@ -93,6 +116,7 @@ export function hasSemanticCompletion(
 
 export function isResultSuccess(r: ForkResult): boolean {
   if (r.exitCode === -1) return false;
+  if (r.retry?.success === false) return false;
   if (hasSemanticCompletion(r)) return true;
   return r.exitCode === 0 && r.stopReason !== "error" && r.stopReason !== "aborted";
 }
@@ -106,7 +130,7 @@ export function normalizeCompletedResult(
   result: ForkResult,
   wasAborted: boolean,
 ): ForkResult {
-  const hasSemanticSuccess = hasSemanticCompletion(result);
+  const hasSemanticSuccess = result.retry?.success === false ? false : hasSemanticCompletion(result);
 
   if (wasAborted) {
     if (hasSemanticSuccess) {

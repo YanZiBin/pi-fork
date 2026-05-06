@@ -164,8 +164,21 @@ function updateAssistantMetadata(result, message) {
   if (!message || message.role !== "assistant") return;
   if (!result.provider && message.provider) result.provider = message.provider;
   if (!result.model && message.model) result.model = message.model;
-  if (message.stopReason) result.stopReason = message.stopReason;
-  if (message.errorMessage) result.errorMessage = message.errorMessage;
+
+  const isAssistantError = message.stopReason === "error" || message.stopReason === "aborted" || Boolean(message.errorMessage);
+  if (message.stopReason) {
+    if (!(result.retry?.success === false && !isAssistantError)) {
+      result.stopReason = message.stopReason;
+    }
+  } else if (!isAssistantError && result.retry?.history?.length && result.retry?.success !== false) {
+    delete result.stopReason;
+  }
+
+  if (message.errorMessage) {
+    result.errorMessage = message.errorMessage;
+  } else if (!isAssistantError && result.retry?.history?.length && result.retry?.success !== false) {
+    delete result.errorMessage;
+  }
 }
 
 function sanitizeAssistantMessage(message) {
@@ -275,6 +288,60 @@ function addMessagesUsage(result, messages) {
     if (addMessageUsage(result, message)) changed = true;
   }
   return changed;
+}
+
+function ensureRetryState(result) {
+  if (!result.retry || typeof result.retry !== "object") result.retry = {};
+  if (!Array.isArray(result.retry.history)) result.retry.history = [];
+  return result.retry;
+}
+
+function processAutoRetryStart(event, result) {
+  const retry = ensureRetryState(result);
+  retry.active = true;
+  retry.pending = false;
+  retry.success = undefined;
+
+  if (typeof event.attempt === "number") retry.attempt = event.attempt;
+  if (typeof event.maxAttempts === "number") retry.maxAttempts = event.maxAttempts;
+  if (typeof event.delayMs === "number") retry.delayMs = event.delayMs;
+  if (typeof event.errorMessage === "string") retry.errorMessage = event.errorMessage;
+  delete retry.finalError;
+
+  retry.history.push({
+    type: "start",
+    attempt: retry.attempt,
+    maxAttempts: retry.maxAttempts,
+    delayMs: retry.delayMs,
+    errorMessage: retry.errorMessage,
+  });
+
+  result.sawAgentEnd = false;
+  return true;
+}
+
+function processAutoRetryEnd(event, result) {
+  const retry = ensureRetryState(result);
+  retry.active = false;
+  retry.pending = false;
+  retry.success = Boolean(event.success);
+
+  if (typeof event.attempt === "number") retry.attempt = event.attempt;
+  if (typeof event.finalError === "string") retry.finalError = event.finalError;
+
+  retry.history.push({
+    type: "end",
+    attempt: retry.attempt,
+    success: retry.success,
+    finalError: retry.finalError,
+  });
+
+  if (!retry.success) {
+    result.stopReason = "error";
+    if (retry.finalError) result.errorMessage = retry.finalError;
+  }
+
+  return true;
 }
 
 function maxActivityOrder(result) {
@@ -515,6 +582,12 @@ export function processPiEvent(event, result) {
       result.sawAgentEnd = true;
       return addMessagesUsage(result, event.messages);
 
+    case "auto_retry_start":
+      return processAutoRetryStart(event, result);
+
+    case "auto_retry_end":
+      return processAutoRetryEnd(event, result);
+
     case "tool_execution_start":
     case "tool_execution_update":
     case "tool_execution_end":
@@ -637,6 +710,24 @@ function totalActivities(result, storedActivities) {
   return totalTools + (result?.thinking ? 1 : 0);
 }
 
+function formatRetryProgress(retry) {
+  if (!retry || typeof retry !== "object" || !retry.active) return "";
+
+  const attempt = typeof retry.attempt === "number" ? retry.attempt : undefined;
+  const maxAttempts = typeof retry.maxAttempts === "number" ? retry.maxAttempts : undefined;
+  const attemptText = attempt && maxAttempts
+    ? `attempt ${attempt}/${maxAttempts}`
+    : attempt ? `attempt ${attempt}` : "retrying";
+  const delayText = typeof retry.delayMs === "number" && retry.delayMs > 0
+    ? `, waiting ${Math.round(retry.delayMs / 1000)}s`
+    : "";
+  const errorText = typeof retry.errorMessage === "string" && retry.errorMessage.trim()
+    ? ` after ${truncateInline(retry.errorMessage.trim(), MAX_INLINE_ERROR_PREVIEW_CHARS)}`
+    : "";
+
+  return `Retrying${errorText} (${attemptText}${delayText})`;
+}
+
 function formatToolProgress(result) {
   const storedActivities = getStoredActivities(result);
   const lines = [];
@@ -659,6 +750,9 @@ function formatToolProgress(result) {
 }
 
 export function getForkProgressText(result) {
+  const retryProgress = formatRetryProgress(result?.retry);
+  if (retryProgress) return retryProgress;
+
   const finalText = getFinalAssistantText(result?.messages);
   if (finalText) return finalText;
 
