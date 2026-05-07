@@ -490,6 +490,7 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
       };
 
       const isErrorAgentEnd = () => result.stopReason === "error" || result.stopReason === "aborted";
+      const isToolUseAgentEnd = () => result.stopReason === "toolUse";
 
       const maybeFinishFromAgentEnd = () => {
         if (didClose || settled) return;
@@ -521,6 +522,12 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
             }, RETRY_DECISION_GRACE_MS);
             retryDecisionTimer.unref();
           }
+          return;
+        }
+
+        if (isToolUseAgentEnd()) {
+          clearSemanticCompletionTimer();
+          clearRetryDecisionTimer();
           return;
         }
 
