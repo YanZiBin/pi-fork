@@ -204,6 +204,54 @@ test("loadConfig allows disabling cost footer", async () => {
   }
 });
 
+test("loadConfig reads default child model and thinking from settings", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fork-config-fixture-"));
+  const agentDir = path.join(tmpDir, "agent");
+  const projectDir = path.join(tmpDir, "project");
+  const projectSettingsDir = path.join(projectDir, ".pi");
+  const { moduleUrl, cleanup } = createTestableConfigModule();
+
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(projectSettingsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(agentDir, "settings.json"),
+    JSON.stringify({
+      "pi-fork": {
+        model: "global-provider/global-model",
+        thinking: "low",
+      },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(projectSettingsDir, "settings.json"),
+    JSON.stringify({
+      "pi-fork": {
+        model: "project-provider/project-model",
+        thinking: "high",
+      },
+    }),
+  );
+
+  const previous = process.env.PI_FORK_TEST_AGENT_DIR;
+  process.env.PI_FORK_TEST_AGENT_DIR = agentDir;
+
+  try {
+    const { loadConfig } = await import(`${moduleUrl}?t=${Date.now()}-model-thinking`);
+    assert.deepEqual(loadConfig(projectDir), {
+      extensions: null,
+      costFooter: true,
+      environment: {},
+      model: "project-provider/project-model",
+      thinking: "high",
+    });
+  } finally {
+    if (previous === undefined) delete process.env.PI_FORK_TEST_AGENT_DIR;
+    else process.env.PI_FORK_TEST_AGENT_DIR = previous;
+    cleanup();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test("loadConfig merges pi-fork.environment with project overriding global", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fork-config-fixture-"));
   const agentDir = path.join(tmpDir, "agent");

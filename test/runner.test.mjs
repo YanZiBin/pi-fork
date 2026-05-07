@@ -57,6 +57,39 @@ if (${exitCode} !== 0) process.exit(${exitCode});
   }
 }
 
+async function runWithArgCapturingFakePi(runForkOptions) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fork-args-test-"));
+  const fakePi = path.join(tmpDir, "fake-pi.mjs");
+  const argsPath = path.join(tmpDir, "args.json");
+  const done = assistantSuccess("Captured args.");
+
+  fs.writeFileSync(
+    fakePi,
+    `import * as fs from "node:fs";
+fs.writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(process.argv.slice(2)));
+process.stdout.write(JSON.stringify({ type: "message_end", message: ${JSON.stringify(done)} }) + "\\n");
+process.stdout.write(JSON.stringify({ type: "agent_end", messages: [${JSON.stringify(done)}] }) + "\\n");
+`,
+  );
+
+  const originalArgv1 = process.argv[1];
+  process.argv[1] = fakePi;
+  try {
+    const result = await runFork({
+      cwd: process.cwd(),
+      task: "capture args",
+      forkSessionSnapshotJsonl: '{"type":"session","id":"test-session"}\n',
+      extensions: [],
+      makeDetails,
+      ...runForkOptions,
+    });
+    return { result, args: JSON.parse(fs.readFileSync(argsPath, "utf-8")) };
+  } finally {
+    process.argv[1] = originalArgv1;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 function assistantError(overrides = {}) {
   return {
     role: "assistant",
@@ -217,6 +250,23 @@ test("buildChildEnv preserves __proto__ as an own env variable", () => {
     ]),
   );
   assert.equal(Object.getOwnPropertyDescriptor(childEnv, "__proto__")?.value, "configured-proto");
+});
+
+test("runFork passes requested model and thinking to the child Pi process", async () => {
+  const { result, args } = await runWithArgCapturingFakePi({
+    model: "openrouter/anthropic/claude-sonnet-4",
+    thinking: "high",
+  });
+
+  assert.equal(isResultSuccess(result), true);
+  assert.deepEqual(args.slice(args.indexOf("--model"), args.indexOf("--model") + 2), [
+    "--model",
+    "openrouter/anthropic/claude-sonnet-4",
+  ]);
+  assert.deepEqual(args.slice(args.indexOf("--thinking"), args.indexOf("--thinking") + 2), [
+    "--thinking",
+    "high",
+  ]);
 });
 
 test("runFork waits for delayed child auto-retry before semantic completion", { timeout: 3000 }, async () => {

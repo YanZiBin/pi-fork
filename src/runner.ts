@@ -286,6 +286,8 @@ function buildPiArgs(
   task: string,
   forkSessionPath: string,
   extensions: string[] | null,
+  model?: string,
+  thinking?: string,
 ): string[] {
   const args: string[] = [
     "--mode",
@@ -300,11 +302,15 @@ function buildPiArgs(
     args.push("--no-extensions");
   }
 
-  if (inheritedCliArgs.fallbackModel) {
+  if (model) {
+    args.push("--model", model);
+  } else if (inheritedCliArgs.fallbackModel) {
     args.push("--model", inheritedCliArgs.fallbackModel);
   }
 
-  if (inheritedCliArgs.fallbackThinking) {
+  if (thinking) {
+    args.push("--thinking", thinking);
+  } else if (inheritedCliArgs.fallbackThinking) {
     args.push("--thinking", inheritedCliArgs.fallbackThinking);
   }
 
@@ -333,6 +339,8 @@ export interface RunForkOptions {
   signal?: AbortSignal;
   onUpdate?: OnUpdateCallback;
   makeDetails: (results: ForkResult[]) => ForkDetails;
+  model?: string;
+  thinking?: string;
 }
 
 export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
@@ -345,6 +353,8 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
     signal,
     onUpdate,
     makeDetails,
+    model,
+    thinking,
   } = opts;
 
   if (!forkSessionSnapshotJsonl.trim()) {
@@ -386,7 +396,7 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
   forkSessionTmpPath = tmp.filePath;
 
   try {
-    const piArgs = buildPiArgs(task, forkSessionTmpPath, extensions);
+    const piArgs = buildPiArgs(task, forkSessionTmpPath, extensions, model, thinking);
     let wasAborted = false;
 
     const exitCode = await new Promise<number>((resolve) => {

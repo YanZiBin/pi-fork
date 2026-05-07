@@ -21,6 +21,16 @@ for use in your Pi sessions.
 { "task": "Review the migration and report risks." }
 ```
 
+You can also override the child process model and thinking level per fork:
+
+```json
+{
+  "task": "Review the migration and report risks.",
+  "model": "openai/gpt-5-mini",
+  "thinking": "high"
+}
+```
+
 The tool starts an isolated child `pi` process with a temporary JSONL snapshot of
 the current active session branch. The child receives the requested task as the
 final user message. The extension does not modify the system prompt and does not
@@ -49,6 +59,25 @@ normal system prompt + forked session context
 ```
 
 Only the final task message changes per fork.
+
+## Child Model and Thinking Defaults
+
+Add optional defaults under `pi-fork` in `~/.pi/agent/settings.json` or
+`.pi/settings.json` to control the model and thinking level used by fork
+children:
+
+```json
+{
+  "pi-fork": {
+    "model": "openai/gpt-5-mini",
+    "thinking": "high"
+  }
+}
+```
+
+Per-call `model` and `thinking` parameters override these settings. If neither a
+per-call value nor a `pi-fork` default is configured, the child process falls
+back to the parent Pi process model and thinking level.
 
 ## Recursive Forks
 
