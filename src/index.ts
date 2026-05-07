@@ -28,6 +28,18 @@ const ForkParams = Type.Object({
     description:
       "The task for the fork to complete. Specify what to do and where the fork's decision authority ends — it will surface ambiguities back to you rather than resolve them on your behalf. The fork already knows to return dense, concrete output with snippets and relationships; you only need to call out anything task-specific about the return shape.",
   }),
+  model: Type.Optional(
+    Type.String({
+      description:
+        "The model for the fork child process, e.g. 'openai/gpt-5-mini' or 'anthropic/claude-sonnet-4:high'. If omitted, inherits the parent session's model.",
+    }),
+  ),
+  thinking: Type.Optional(
+    Type.String({
+      description:
+        "Thinking level for the fork child: 'off', 'minimal', 'low', 'medium', 'high', 'xhigh'. If omitted, inherits the parent's thinking level.",
+    }),
+  ),
 });
 
 interface SessionSnapshotSource {
@@ -123,6 +135,8 @@ export default function (pi: ExtensionAPI) {
         forkSessionSnapshotJsonl: snapshot,
         extensions: config.extensions,
         environment: config.environment,
+        model: params.model,
+        thinking: params.thinking,
         signal,
         onUpdate,
         makeDetails,
