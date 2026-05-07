@@ -17,6 +17,12 @@ export interface ForkConfig {
 
   /** Show fork cost as an extra footer status line. */
   costFooter: boolean;
+
+  /** Default model for fork children (e.g. "opencode-go/deepseek-v4-pro"). Can be overridden per call. */
+  model?: string;
+
+  /** Default thinking level for fork children ("off", "minimal", "low", "medium", "high", "xhigh"). Can be overridden per call. */
+  thinking?: string;
 }
 
 const SETTINGS_KEY = "pi-fork";
@@ -136,6 +142,8 @@ function readNamespacedConfig(settingsPath: string, baseDir: string): Partial<Fo
     if (extensions !== undefined) parsed.extensions = extensions;
     if (environment !== undefined) parsed.environment = environment;
     if (typeof config.costFooter === "boolean") parsed.costFooter = config.costFooter;
+    if (typeof config.model === "string") parsed.model = config.model;
+    if (typeof config.thinking === "string") parsed.thinking = config.thinking;
     return parsed;
   } catch {
     return {};
