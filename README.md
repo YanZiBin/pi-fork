@@ -21,34 +21,32 @@ for use in your Pi sessions.
 { "task": "Review the migration and report risks." }
 ```
 
-The tool starts an isolated child `pi` process with a temporary JSONL snapshot of
-the current active session branch. The child receives the requested task as the
-final user message. The extension does not modify the system prompt and does not
-use agent definition files.
+The tool starts an isolated child `pi` process with a temporary JSONL session
+header and a curated task brief as the final user message. The child does not
+receive the parent conversation branch. The extension does not modify the system
+prompt and does not use agent definition files.
 
 ## Context Shape
 
-For a forked child, the LLM context is roughly:
+Fork children run in curated-context mode. The LLM context is roughly:
 
 ```text
 System:
   Normal Pi system prompt
 
 Messages:
-  Current active branch rebuilt from temporary JSONL
-  User: You are a fork of the main agent. You have full access to the session context above.
-        Complete the task below and nothing beyond it...
-        Task:
+  User: You are an execution-only fork of the main agent.
+        You do not have access to the parent conversation history.
+        Rely only on the curated task brief and your own tool results...
+        Curated task brief:
         <task>
 ```
 
-This keeps the expensive prefix stable:
-
-```text
-normal system prompt + forked session context
-```
-
-Only the final task message changes per fork.
+The parent agent is responsible for writing a clear task brief with the working
+directory, goal, relevant files, constraints, stop conditions, validation
+requirements, and expected output format. The child should not infer file
+contents, command output, diffs, commit hashes, test results, or remote state
+from prior parent context because that context is not provided.
 
 ## Recursive Forks
 

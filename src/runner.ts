@@ -1,8 +1,9 @@
 /**
  * Fork process runner.
  *
- * Spawns an isolated `pi` process, gives it a temporary session snapshot, and
- * streams JSON-mode results back to the parent tool call.
+ * Spawns an isolated `pi` process, gives it a temporary session header and a
+ * curated task brief, then streams JSON-mode results back to the parent tool
+ * call.
  */
 
 import { spawn } from "node:child_process";
@@ -54,7 +55,13 @@ function cleanupTempDir(dir: string | null): void {
 }
 
 export function buildForkTaskPrompt(task: string): string {
-  return `You are a fork of the main agent. You have full access to the session context above. You are reporting to your parent agent — not to the user.
+  return `You are an execution-only fork of the main agent. You are reporting to your parent agent — not to the user.
+
+You are running in curated-context mode. You do not have access to the parent conversation history. Rely only on:
+1. The curated task brief below.
+2. Your own tool results from this fork process.
+
+Do not claim to have read, edited, run, tested, committed, pushed, or verified anything unless you actually used tools in this fork and can cite the relevant tool result. If tools are unavailable, blocked, or you did not use them, state that explicitly. Never infer command output, file contents, diffs, commit hashes, test results, or remote state from the task brief.
 
 Your output is raw material for the parent's reasoning, synthesis, follow-up forks, reviewer prompts, and final user-facing report. It is not a final response that anyone will read directly.
 
@@ -64,7 +71,7 @@ Your primary goal is to make the parent agent never need to re-read what you rea
 
 Complete only the task below. Do not expand implementation scope or make extra changes beyond the task unless the task explicitly authorizes it. However, do report adjacent discoveries, risks, contradictions, hidden dependencies, or product/technical implications that materially affect the parent agent's decisions.
 
-Task:
+Curated task brief:
 ${task}
 
 Return a dense handoff report with the sections that apply:
@@ -362,10 +369,10 @@ export async function runFork(opts: RunForkOptions): Promise<ForkResult> {
       task,
       exitCode: 1,
       messages: [],
-      stderr: "Cannot fork: missing parent session snapshot context.",
+      stderr: "Cannot fork: missing curated child session header.",
       usage: emptyUsage(),
       stopReason: "error",
-      errorMessage: "Cannot fork: missing parent session snapshot context.",
+      errorMessage: "Cannot fork: missing curated child session header.",
     };
   }
 

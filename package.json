@@ -1,7 +1,7 @@
 {
   "name": "pi-fork",
   "version": "0.1.0",
-  "description": "Cache-friendly fork tool for Pi coding agent. Run a task in an isolated child Pi process with the current branch context.",
+  "description": "Curated-context fork tool for Pi coding agent. Run a focused task in an isolated child Pi process without parent conversation history.",
   "type": "module",
   "main": "src/index.ts",
   "files": [
@@ -15,7 +15,7 @@
     ]
   },
   "scripts": {
-    "test": "node --test 'test/**/*.mjs'"
+    "test": "node --test test/*.mjs"
   },
   "keywords": [
     "pi",

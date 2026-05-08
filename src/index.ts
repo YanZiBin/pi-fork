@@ -4,9 +4,9 @@
  * Provides one tool:
  *   fork({ task: "..." })
  *
- * The child process receives a temporary JSONL snapshot of the current active
- * session branch, then a final user message containing fork-worker instructions
- * and the requested task. It does not modify the system prompt.
+ * The child process receives a temporary JSONL session header, then a final user
+ * message containing fork-worker instructions and the curated task brief. It
+ * does not receive the parent conversation branch or modify the system prompt.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -15,6 +15,7 @@ import { aggregateInclusiveCost, formatForkCostStatus } from "./cost.js";
 import { loadConfig } from "./config.js";
 import { renderForkCall, renderForkResult } from "./render.js";
 import { runFork } from "./runner.js";
+import { buildForkSessionSnapshotJsonl } from "./snapshot.js";
 import { getResultSummaryText } from "./runner-events.js";
 import {
   type ForkDetails,
@@ -41,23 +42,6 @@ const ForkParams = Type.Object({
     }),
   ),
 });
-
-interface SessionSnapshotSource {
-  getHeader: () => unknown;
-  getBranch: () => unknown[];
-}
-
-function buildForkSessionSnapshotJsonl(
-  sessionManager: SessionSnapshotSource,
-): string | null {
-  const header = sessionManager.getHeader();
-  if (!header || typeof header !== "object") return null;
-
-  const branchEntries = sessionManager.getBranch();
-  const lines = [JSON.stringify(header)];
-  for (const entry of branchEntries) lines.push(JSON.stringify(entry));
-  return `${lines.join("\n")}\n`;
-}
 
 function makeDetails(results: ForkResult[]): ForkDetails {
   return { results };
@@ -109,7 +93,7 @@ export default function (pi: ExtensionAPI) {
     name: "fork",
     label: "Fork",
     description:
-      "Spawn a fork of yourself to handle a focused task. The fork inherits your full session context and works independently — its activity stays out of your context window. Forks return dense, concrete output: the snippets, signatures, and relationships you'd otherwise have to discover yourself, plus anything they found beyond the task that's worth knowing. Use for anything that would generate context noise: exploration, implementation, testing, iteration.",
+      "Spawn an execution-only fork to handle a focused task from a curated task brief. The fork does not inherit the parent conversation history; it relies on the brief and its own tool results. Forks return dense, concrete output: snippets, signatures, relationships, validation evidence, and any adjacent findings worth knowing. Use for focused exploration, implementation, testing, or iteration that would generate context noise.",
     parameters: ForkParams,
     renderCall: renderForkCall,
     renderResult: renderForkResult,
@@ -119,7 +103,7 @@ export default function (pi: ExtensionAPI) {
       if (!snapshot) {
         const result = emptyFailedResult(
           params.task,
-          "Cannot fork: failed to snapshot current session context.",
+          "Cannot fork: failed to create curated child session header.",
         );
         return {
           content: [{ type: "text" as const, text: getResultSummaryText(result) }],
